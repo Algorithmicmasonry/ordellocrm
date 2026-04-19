@@ -21,15 +21,21 @@ export type OrgContext = {
   userEmail: string
 }
 
+export type OrgContextResult =
+  | { status: "unauthenticated" }
+  | { status: "no_org"; userId: string }
+  | { status: "ok"; ctx: OrgContext }
+
 /**
  * Get the current user's session + their active org membership.
- * Pass orgSlug to resolve a specific org, otherwise returns the first active membership.
- *
- * Returns null if unauthenticated or not a member of the requested org.
+ * Returns a discriminated union so callers can handle each case:
+ *  - "unauthenticated" → redirect to /login
+ *  - "no_org"          → redirect to /onboarding
+ *  - "ok"              → proceed with ctx
  */
-export async function getOrgContext(orgSlug?: string): Promise<OrgContext | null> {
+export async function getOrgContext(orgSlug?: string): Promise<OrgContextResult> {
   const session = await auth.api.getSession({ headers: await headers() })
-  if (!session?.user) return null
+  if (!session?.user) return { status: "unauthenticated" }
 
   const where = orgSlug
     ? { organization: { slug: orgSlug }, userId: session.user.id, isActive: true }
@@ -52,22 +58,25 @@ export async function getOrgContext(orgSlug?: string): Promise<OrgContext | null
     orderBy: { createdAt: "asc" },
   })
 
-  if (!membership) return null
+  if (!membership) return { status: "no_org", userId: session.user.id }
 
   return {
-    organizationId: membership.organization.id,
-    orgName: membership.organization.name,
-    orgSlug: membership.organization.slug,
-    orgStatus: membership.organization.status,
-    trialEndsAt: membership.organization.trialEndsAt,
-    aiTokenBalance: membership.organization.aiTokenBalance,
-    memberId: membership.id,
-    role: membership.role,
-    isAiAgent: membership.isAiAgent,
-    isActive: membership.isActive,
-    userId: session.user.id,
-    userName: session.user.name,
-    userEmail: session.user.email,
+    status: "ok",
+    ctx: {
+      organizationId: membership.organization.id,
+      orgName: membership.organization.name,
+      orgSlug: membership.organization.slug,
+      orgStatus: membership.organization.status,
+      trialEndsAt: membership.organization.trialEndsAt,
+      aiTokenBalance: membership.organization.aiTokenBalance,
+      memberId: membership.id,
+      role: membership.role,
+      isAiAgent: membership.isAiAgent,
+      isActive: membership.isActive,
+      userId: session.user.id,
+      userName: session.user.name,
+      userEmail: session.user.email,
+    },
   }
 }
 
@@ -81,10 +90,26 @@ export function isOrgAccessible(ctx: OrgContext): boolean {
 }
 
 /**
- * Returns how many trial days are left. Returns 0 if not in trial.
+ * Returns how many trial days are left. Returns 0 if not in trial or trial expired.
  */
 export function trialDaysLeft(ctx: OrgContext): number {
   if (ctx.orgStatus !== "TRIALING") return 0
   const diff = ctx.trialEndsAt.getTime() - Date.now()
   return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)))
+}
+
+/**
+ * Convenience: resolves org context and redirects if unauthenticated or no org.
+ * Use this in dashboard pages/layouts instead of calling getOrgContext directly.
+ *
+ * Usage:
+ *   const ctx = await requireOrgContext()
+ *   // ctx is guaranteed to be OrgContext here
+ */
+export async function requireOrgContext(orgSlug?: string): Promise<OrgContext> {
+  const { redirect } = await import("next/navigation")
+  const result = await getOrgContext(orgSlug)
+  if (result.status === "unauthenticated") redirect("/login")
+  if (result.status === "no_org") redirect("/onboarding")
+  return result.ctx
 }

@@ -22,10 +22,25 @@ export function getInitials(name: string): string {
 
 export function formatRole(role: string): string {
   const roleMap: Record<string, string> = {
-    ADMIN: "System Admin",
+    OWNER: "Owner",
+    ADMIN: "Admin",
     SALES_REP: "Sales Representative",
     INVENTORY_MANAGER: "Inventory Manager",
   };
-  
+
   return roleMap[role] || role;
+}
+
+/**
+ * Converts a business name to a URL-safe slug.
+ * "Kolor Naturals Limited" → "kolor-naturals-limited"
+ */
+export function slugify(name: string): string {
+  return name
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9\s-]/g, "")  // remove special chars
+    .replace(/\s+/g, "-")           // spaces → hyphens
+    .replace(/-+/g, "-")            // collapse multiple hyphens
+    .replace(/^-|-$/g, "")          // trim leading/trailing hyphens
 }

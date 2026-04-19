@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { signIn } from "@/lib/auth-client";
+import { signUp } from "@/lib/auth-client";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,8 +9,9 @@ import { Label } from "@/components/ui/label";
 import { Eye, EyeOff } from "lucide-react";
 import Link from "next/link";
 
-export default function LoginPage() {
+export default function RegisterPage() {
   const router = useRouter();
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -23,16 +24,16 @@ export default function LoginPage() {
     setError("");
 
     try {
-      const result = await signIn.email({ email, password });
+      const result = await signUp.email({ name, email, password });
       if (result.error) {
-        setError(result.error.message || "Invalid email or password");
+        setError(result.error.message || "Failed to create account");
         setLoading(false);
         return;
       }
-      // Dashboard layout handles redirecting to /onboarding if no org exists
-      router.push("/dashboard");
+      // Redirect to onboarding to set up their business
+      router.push("/onboarding");
     } catch {
-      setError("An error occurred during login");
+      setError("An error occurred. Please try again.");
       setLoading(false);
     }
   }
@@ -43,7 +44,7 @@ export default function LoginPage() {
         <div className="rounded-xl border bg-card shadow-lg p-8">
           <div className="text-center mb-8">
             <h1 className="text-3xl font-bold mb-1">Ordello</h1>
-            <p className="text-muted-foreground text-sm">Sign in to your account</p>
+            <p className="text-muted-foreground text-sm">Create your free account — no credit card required</p>
           </div>
 
           {error && (
@@ -53,6 +54,17 @@ export default function LoginPage() {
           )}
 
           <form onSubmit={handleSubmit} className="space-y-5">
+            <div>
+              <Label className="block text-sm font-medium mb-1">Full Name</Label>
+              <Input
+                type="text"
+                required
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Emmanuel Oamen"
+              />
+            </div>
+
             <div>
               <Label className="block text-sm font-medium mb-1">Email</Label>
               <Input
@@ -70,9 +82,10 @@ export default function LoginPage() {
                 <Input
                   type={showPassword ? "text" : "password"}
                   required
+                  minLength={8}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
+                  placeholder="At least 8 characters"
                   className="pr-10"
                 />
                 <button
@@ -86,14 +99,14 @@ export default function LoginPage() {
             </div>
 
             <Button type="submit" size="lg" className="w-full" disabled={loading}>
-              {loading ? "Signing in..." : "Sign In"}
+              {loading ? "Creating account..." : "Create Account — Free for 14 Days"}
             </Button>
           </form>
 
           <p className="mt-6 text-center text-sm text-muted-foreground">
-            Don&apos;t have an account?{" "}
-            <Link href="/register" className="text-primary font-medium hover:underline">
-              Start free trial
+            Already have an account?{" "}
+            <Link href="/login" className="text-primary font-medium hover:underline">
+              Sign in
             </Link>
           </p>
         </div>
