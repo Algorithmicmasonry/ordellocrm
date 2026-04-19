@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import crypto from "crypto"
 import { db } from "@/lib/db"
+import { creditTokens } from "@/lib/ai-tokens"
 import type { OrgPlan } from "@prisma/client"
 
 function verifySignature(body: string, signature: string): boolean {
@@ -27,9 +28,19 @@ export async function POST(req: NextRequest) {
     switch (event.event) {
 
       case "charge.success": {
-        const { metadata, amount } = event.data
-        const { organizationId, plan, interval } = metadata ?? {}
-        if (!organizationId || !plan) break
+        const { metadata, amount, reference } = event.data
+        const { organizationId, type, tokens, plan, interval } = metadata ?? {}
+        if (!organizationId) break
+
+        // Token purchase — credit tokens to org
+        if (type === "token_purchase" && tokens) {
+          await creditTokens(organizationId, tokens, amount, reference)
+          console.log(`[paystack/webhook] Credited ${tokens} tokens to org ${organizationId}`)
+          break
+        }
+
+        // Subscription payment — activate org
+        if (!plan) break
 
         const now = new Date()
         const periodEnd = new Date(now)
