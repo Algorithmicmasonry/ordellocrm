@@ -45,9 +45,11 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL("/login", request.url))
   }
 
-  // Free routes don't need subscription check — pass through
-  // (subscription check happens in the page/layout for better UX)
-  return NextResponse.next()
+  // Pass pathname as a header so server components can read it
+  // (Next.js doesn't expose the current pathname to server components directly)
+  const response = NextResponse.next()
+  response.headers.set("x-pathname", pathname)
+  return response
 }
 
 export const config = {

@@ -5,6 +5,18 @@ import { db } from "./db"
 import { headers } from "next/headers"
 import type { OrgMemberRole, OrgStatus } from "@prisma/client"
 
+// Routes always accessible regardless of subscription status
+const FREE_ROUTES = [
+  "/dashboard/admin/utm",
+  "/dashboard/admin/ai-sandbox",
+]
+
+export function isFreeRoute(pathname: string): boolean {
+  return FREE_ROUTES.some(
+    (route) => pathname === route || pathname.startsWith(route + "/")
+  )
+}
+
 export type OrgContext = {
   organizationId: string
   orgName: string
