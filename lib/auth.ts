@@ -9,20 +9,8 @@ export const auth = betterAuth({
   emailAndPassword: {
     enabled: true,
   },
-  user: {
-    additionalFields: {
-      role: {
-        type: "string",
-        required: true,
-        defaultValue: "SALES_REP",
-      },
-      isActive: {
-        type: "boolean",
-        required: true,
-        defaultValue: true,
-      },
-    },
-  },
+  // Role and isActive are now on OrganizationMember, not on User.
+  // User is a global identity; org-specific attributes live in the membership.
 })
 
 export type Session = typeof auth.$Infer.Session
