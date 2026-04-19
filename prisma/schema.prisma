@@ -1,0 +1,841 @@
+// Ordello — Multi-tenant SaaS Schema
+// Built on top of Ordo CRM
+// Every business (Organization) is fully isolated via organizationId
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ============================================================
+// ENUMS
+// ============================================================
+
+enum OrgPlan {
+  CORE
+  GROWTH
+  ENTERPRISE
+}
+
+enum OrgStatus {
+  TRIALING    // 14-day free trial, full access
+  ACTIVE      // Paid and current
+  PAST_DUE    // Payment failed, grace period
+  CANCELLED   // Subscription cancelled
+  PAUSED      // Manually paused by admin
+}
+
+enum OrgMemberRole {
+  OWNER              // Created the org, cannot be removed
+  ADMIN              // Full access within the org
+  SALES_REP
+  INVENTORY_MANAGER
+}
+
+enum AiTokenTxType {
+  PURCHASE   // Bought a token pack
+  CONSUMED   // Used by a Vapi call
+  REFUNDED   // Refund issued
+  BONUS      // Free tokens granted
+}
+
+enum AiCallStatus {
+  PENDING
+  IN_PROGRESS
+  REACHED
+  UNREACHABLE
+  COMPLETED
+}
+
+enum AiCallOutcome {
+  ANSWERED
+  NO_ANSWER
+  BUSY
+  FAILED
+  VOICEMAIL
+}
+
+enum OrderStatus {
+  NEW
+  CONFIRMED
+  DISPATCHED
+  DELIVERED
+  CANCELLED
+  POSTPONED
+  NOT_REACHABLE
+  NOT_PICKING_CALLS
+}
+
+enum OrderSource {
+  FACEBOOK
+  TIKTOK
+  WHATSAPP
+  WEBSITE
+}
+
+enum NotificationType {
+  ORDER_ASSIGNED
+  ORDER_STATUS_CHANGED
+  ORDER_DELIVERED
+  ORDER_NOTE_ADDED
+  LOW_STOCK_ALERT
+  NEW_ORDER
+  GENERAL
+}
+
+enum Currency {
+  NGN
+  GHS
+  USD
+  GBP
+  EUR
+}
+
+enum StockMovementType {
+  STOCK_ADDED
+  DISTRIBUTED_TO_AGENT
+  DELIVERED
+  DELIVERY_REVERSED
+  RETURNED_FROM_AGENT
+  CORRECTION
+}
+
+enum PayrollStatus {
+  DRAFT
+  PAID
+}
+
+// ============================================================
+// ORGANIZATION (Tenant)
+// ============================================================
+
+model Organization {
+  id   String @id @default(cuid())
+  name String
+  slug String @unique // URL-safe identifier e.g. "kolor-naturals"
+  logo String?
+
+  // Plan
+  plan     OrgPlan   @default(CORE)
+  status   OrgStatus @default(TRIALING)
+  interval String    @default("monthly") // "monthly" | "yearly"
+
+  // Trial — 14 days from signup
+  trialStartedAt DateTime @default(now())
+  trialEndsAt    DateTime // set to now() + 14 days on org creation
+
+  // Paystack billing
+  paystackCustomerId       String?
+  paystackSubscriptionCode String?
+  currentPeriodEnd         DateTime?
+  subscribedAt             DateTime?
+
+  // AI token balance (in-app currency)
+  aiTokenBalance Int @default(0)
+
+  // Relations
+  members            OrganizationMember[]
+  subscription       Subscription?
+  aiTokenTransactions AiTokenTransaction[]
+  products           Product[]
+  agents             Agent[]
+  orders             Order[]
+  expenses           Expense[]
+  settings           SystemSetting[]
+  notifications      Notification[]
+  stockMovements     StockMovement[]
+  payrolls           Payroll[]
+  salesRepRates      SalesRepRate[]
+  headOfHouse        HeadOfHouse[]
+  campaignLabels     CampaignLabel[]
+  settlements        Settlement[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("organizations")
+}
+
+// ============================================================
+// ORGANIZATION MEMBER (User ↔ Org bridge — role is per-org)
+// ============================================================
+
+model OrganizationMember {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  role      OrgMemberRole @default(SALES_REP)
+  isAiAgent Boolean       @default(false) // AI agent flag is per-org
+  isActive  Boolean       @default(true)
+
+  invitedAt DateTime  @default(now())
+  joinedAt  DateTime? // null until they accept the invite
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([organizationId, userId])
+  @@index([organizationId])
+  @@index([userId])
+  @@map("organization_members")
+}
+
+// ============================================================
+// SUBSCRIPTION (Paystack billing record)
+// ============================================================
+
+model Subscription {
+  id             String       @id @default(cuid())
+  organizationId String       @unique
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  plan     OrgPlan
+  interval String    // "monthly" | "yearly"
+  status   OrgStatus
+
+  paystackSubscriptionCode String?
+  paystackPlanCode         String?
+  currentPeriodStart       DateTime?
+  currentPeriodEnd         DateTime?
+  cancelledAt              DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("subscriptions")
+}
+
+// ============================================================
+// AI TOKEN TRANSACTIONS (In-app currency for Vapi calls)
+// ============================================================
+
+model AiTokenTransaction {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  type         AiTokenTxType
+  tokens       Int           // positive = in, negative = out
+  balanceAfter Int
+
+  // For PURCHASE
+  amountPaid  Float?  // NGN paid
+  paystackRef String? // Paystack payment reference
+
+  // For CONSUMED
+  vapiCallId   String?
+  vapiDuration Int?    // seconds consumed
+  orderId      String?
+
+  note      String?
+  createdAt DateTime @default(now())
+
+  @@index([organizationId, createdAt])
+  @@map("ai_token_transactions")
+}
+
+// ============================================================
+// USER (Global — belongs to multiple orgs via OrganizationMember)
+// ============================================================
+
+model User {
+  id    String @id @default(cuid())
+  email String @unique
+  name  String
+
+  // Auth fields
+  password      String?
+  emailVerified Boolean   @default(false)
+  image         String?
+  sessions      Session[]
+  accounts      Account[]
+
+  // Org memberships (role + isAiAgent live here, not on User)
+  memberships OrganizationMember[]
+
+  pushSubscriptions PushSubscription[]
+  notifications     Notification[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("users")
+}
+
+// ============================================================
+// PRODUCT (per-org)
+// ============================================================
+
+model Product {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  name        String
+  description String?
+  currency    Currency  @default(NGN)
+  isActive    Boolean   @default(true)
+  isDeleted   Boolean   @default(false)
+  deletedAt   DateTime?
+
+  packageSelectorNote String?
+
+  openingStock Int @default(0)
+  currentStock Int @default(0)
+  reorderPoint Int @default(0)
+
+  // SKU unique per org (not globally)
+  sku String?
+
+  orders         OrderItem[]
+  agentStock     AgentStock[]
+  expenses       Expense[]
+  batches        ProductBatch[]
+  packages       ProductPackage[]
+  packageComponents ProductPackageComponent[]
+  productPrices  ProductPrice[]
+  stockMovements StockMovement[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([organizationId, sku]) // SKU unique within org only
+  @@index([organizationId])
+  @@index([organizationId, currency])
+  @@map("products")
+}
+
+model ProductPrice {
+  id        String   @id @default(cuid())
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  currency  Currency
+  price     Float
+  cost      Float
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([productId, currency])
+  @@index([productId])
+  @@map("product_prices")
+}
+
+model ProductPackage {
+  id          String   @id @default(cuid())
+  productId   String
+  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  quantity    Int
+  price       Float
+  currency    Currency @default(NGN)
+  isActive    Boolean  @default(true)
+  displayOrder Int     @default(0)
+
+  components ProductPackageComponent[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([productId, isActive])
+  @@map("product_packages")
+}
+
+model ProductPackageComponent {
+  id        String         @id @default(cuid())
+  packageId String
+  package   ProductPackage @relation(fields: [packageId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product        @relation(fields: [productId], references: [id], onDelete: Restrict)
+  quantity  Int            @default(1)
+  isFree    Boolean        @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([packageId, productId])
+  @@map("product_package_components")
+}
+
+model ProductBatch {
+  id        String   @id @default(cuid())
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  name      String
+  quantity  Int
+  expenses  Expense[]
+  date      DateTime @default(now())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([productId])
+  @@map("product_batches")
+}
+
+// ============================================================
+// AGENT (per-org)
+// ============================================================
+
+model Agent {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  name     String
+  phone    String
+  location String
+  address  String?
+  isActive Boolean @default(true)
+
+  whatsappGroupId String?
+  coverageAreas   String[]
+
+  orders      Order[]
+  stock       AgentStock[]
+  settlements Settlement[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId])
+  @@map("agents")
+}
+
+model AgentStock {
+  id        String  @id @default(cuid())
+  agentId   String
+  agent     Agent   @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Restrict)
+  quantity  Int     @default(0)
+  defective Int     @default(0)
+  missing   Int     @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([agentId, productId])
+  @@map("agent_stock")
+}
+
+model Settlement {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  agentId        String
+  agent          Agent        @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  stockValue    Float
+  cashCollected Float
+  cashReturned  Float
+  adjustments   Float    @default(0)
+  balanceDue    Float
+  notes         String?
+  settledBy     String?
+  settledAt     DateTime @default(now())
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId])
+  @@map("settlements")
+}
+
+// ============================================================
+// ORDER (per-org)
+// ============================================================
+
+model Order {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  orderNumber Int @default(autoincrement()) // unique per org enforced below
+
+  customerName     String
+  customerPhone    String
+  customerWhatsapp String?
+  deliveryAddress  String
+  state            String
+  city             String
+
+  status      OrderStatus @default(NEW)
+  source      OrderSource
+  utmSource   String?
+  referrer    String?
+  currency    Currency    @default(NGN)
+  totalAmount Float       @default(0)
+
+  assignedToId String?
+  assignedTo   User?   @relation(fields: [assignedToId], references: [id])
+
+  agentId                String?
+  agent                  Agent?  @relation(fields: [agentId], references: [id])
+  deliverySlot           String?
+  agentWhatsappMessageId String?
+
+  items OrderItem[]
+  notes OrderNote[]
+
+  confirmedAt  DateTime?
+  dispatchedAt DateTime?
+  deliveredAt  DateTime?
+  cancelledAt  DateTime?
+
+  utmCampaign String?
+  utmContent  String?
+  utmMedium   String?
+  utmTerm     String?
+
+  aiCallStatus   AiCallStatus?
+  aiCallAttempts Int           @default(0)
+  aiCycleNumber  Int           @default(1)
+  aiNextCallAt   DateTime?
+  aiCycleStartAt DateTime?
+  aiCallLogs     AiCallLog[]
+
+  isSandbox Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([organizationId, orderNumber]) // Order numbers unique per org
+  @@index([organizationId])
+  @@index([organizationId, status])
+  @@index([organizationId, assignedToId])
+  @@map("orders")
+}
+
+model OrderItem {
+  id        String  @id @default(cuid())
+  orderId   String
+  order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Restrict)
+  quantity  Int
+  price     Float
+  cost      Float
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("order_items")
+}
+
+model OrderNote {
+  id           String    @id @default(cuid())
+  orderId      String
+  order        Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  note         String
+  isFollowUp   Boolean   @default(false)
+  followUpDate DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@map("order_notes")
+}
+
+model AiCallLog {
+  id      String @id @default(cuid())
+  orderId String
+  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  attemptNumber  Int
+  cycleNumber    Int            @default(1)
+  vapiCallId     String?
+  outcome        AiCallOutcome?
+  durationSecs   Int?
+  transcript     String?
+  whatsappSent   Boolean        @default(false)
+  whatsappSentAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([orderId])
+  @@map("ai_call_logs")
+}
+
+// ============================================================
+// EXPENSE (per-org)
+// ============================================================
+
+model Expense {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  productId String?
+  product   Product?      @relation(fields: [productId], references: [id], onDelete: Restrict)
+  batchId   String?
+  batch     ProductBatch? @relation(fields: [batchId], references: [id], onDelete: SetNull)
+
+  type          String
+  amount        Float
+  batchQuantity Int?
+  currency      Currency @default(NGN)
+  description   String?
+  date          DateTime @default(now())
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId])
+  @@map("expenses")
+}
+
+// ============================================================
+// SYSTEM SETTINGS (per-org — round-robin index, AI agent ID, etc.)
+// ============================================================
+
+model SystemSetting {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  key            String
+  value          String
+
+  updatedAt DateTime @updatedAt
+
+  @@unique([organizationId, key]) // Key unique per org
+  @@index([organizationId])
+  @@map("system_settings")
+}
+
+// ============================================================
+// STOCK MOVEMENTS (per-org)
+// ============================================================
+
+model StockMovement {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  productId    String
+  product      Product           @relation(fields: [productId], references: [id])
+  type         StockMovementType
+  quantity     Int
+  balanceAfter Int
+  agentId      String?
+  orderId      String?
+  userId       String?
+  note         String?
+
+  createdAt DateTime @default(now())
+
+  @@index([organizationId, productId, createdAt])
+  @@index([agentId])
+  @@index([orderId])
+  @@map("stock_movements")
+}
+
+// ============================================================
+// NOTIFICATIONS (per-org)
+// ============================================================
+
+model Notification {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  userId  String
+  user    User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type    NotificationType
+  title   String
+  message String
+  link    String?
+  isRead  Boolean          @default(false)
+  orderId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, isRead])
+  @@index([organizationId, userId])
+  @@map("notifications")
+}
+
+// ============================================================
+// PAYROLL (per-org)
+// ============================================================
+
+model SalesRepRate {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ratePerOrder   Float
+  createdById    String
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([organizationId, userId]) // One rate per user per org
+  @@index([organizationId])
+  @@map("sales_rep_rates")
+}
+
+model Payroll {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  label       String
+  monthYear   String        // "2026-03"
+  startDate   DateTime
+  endDate     DateTime
+  status      PayrollStatus @default(DRAFT)
+  totalAmount Float
+  notes       String?
+  createdById String
+  createdAt   DateTime      @default(now())
+  paidAt      DateTime?
+  items       PayrollItem[]
+
+  @@unique([organizationId, monthYear]) // One payroll per month per org
+  @@index([organizationId])
+  @@map("payrolls")
+}
+
+model PayrollItem {
+  id              String  @id @default(cuid())
+  payrollId       String
+  payroll         Payroll @relation(fields: [payrollId], references: [id], onDelete: Cascade)
+  userId          String
+  user            User    @relation(fields: [userId], references: [id])
+  ordersDelivered Int
+  ratePerOrder    Float
+  baseAmount      Float
+  hohBonus        Float   @default(0)
+  hohWeeks        Int     @default(0)
+  totalAmount     Float
+
+  createdAt DateTime @default(now())
+
+  @@map("payroll_items")
+}
+
+model HeadOfHouse {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  userId               String
+  user                 User     @relation(fields: [userId], references: [id])
+  performanceWeekStart DateTime
+  performanceWeekEnd   DateTime
+  titleWeekStart       DateTime
+  titleWeekEnd         DateTime
+  ordersDelivered      Int
+  conversionRate       Float
+  createdAt            DateTime @default(now())
+
+  @@unique([organizationId, performanceWeekStart]) // One HoH per week per org
+  @@index([organizationId])
+  @@map("head_of_house")
+}
+
+// ============================================================
+// CAMPAIGN LABELS (per-org)
+// ============================================================
+
+model CampaignLabel {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  key   String
+  type  String
+  label String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([organizationId, key, type])
+  @@index([organizationId])
+  @@map("campaign_labels")
+}
+
+// ============================================================
+// PUSH SUBSCRIPTIONS (per-user, not per-org)
+// ============================================================
+
+model PushSubscription {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  endpoint   String
+  p256dh     String
+  auth       String
+  isActive   Boolean   @default(true)
+  lastUsedAt DateTime?
+  userAgent  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, endpoint])
+  @@index([userId])
+  @@map("push_subscriptions")
+}
+
+// ============================================================
+// AUTH (Better Auth — unchanged)
+// ============================================================
+
+model Session {
+  id        String   @id
+  expiresAt DateTime
+  token     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ipAddress String?
+  userAgent String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([token])
+  @@index([userId])
+  @@map("session")
+}
+
+model Account {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@unique([providerId, accountId])
+  @@index([userId])
+  @@map("account")
+}
+
+model Verification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
+  @@map("verification")
+}

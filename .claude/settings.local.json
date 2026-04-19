@@ -1,0 +1,43 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pnpm install:*)",
+      "Bash(tasklist:*)",
+      "Bash(findstr:*)",
+      "Bash(pnpm dlx:*)",
+      "Bash(ls:*)",
+      "Bash(pnpm build:*)",
+      "Bash(wc:*)",
+      "Bash(pnpm db:generate:*)",
+      "Bash(pnpm db:migrate:*)",
+      "Bash(pnpm db:push:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(cd:*)",
+      "Bash(npm run build)",
+      "Bash(pnpm run build:*)",
+      "Bash(pnpm add:*)",
+      "Bash(npx web-push:*)",
+      "Bash(git push)",
+      "Bash(grep:*)",
+      "Bash(pnpm tsc:*)",
+      "Bash(npm run lint)",
+      "Bash(done)",
+      "Bash(npx tsc:*)",
+      "Bash(pnpm prisma migrate create:*)",
+      "Bash(tee:*)",
+      "Bash(node:*)",
+      "Bash(npx tsx:*)",
+      "Bash(\"C:\\\\Users\\\\HP\\\\Desktop\\\\Coding Folders\\\\ordo\\\\app\\\\dashboard\\\\sales-rep\\\\actions.ts\":*)",
+      "WebFetch(domain:skills.sentry.gg)",
+      "Bash(\"/c/Users/HP/Desktop/Coding Folders/ordo/.env\":*)",
+      "Bash(npx prisma:*)",
+      "Bash(npx vercel:*)",
+      "Read(//c/Users/HP/Desktop/Coding Folders/ordo-whatsapp-service/**)",
+      "Bash(npm install:*)",
+      "Bash(cmd //c \"robocopy \\\\\"C:\\\\\\\\Users\\\\\\\\HP\\\\\\\\Desktop\\\\\\\\Coding Folders\\\\\\\\ordo\\\\\" \\\\\"C:\\\\\\\\Users\\\\\\\\HP\\\\\\\\Desktop\\\\\\\\Coding Folders\\\\\\\\ordello\\\\\" /E /XD \\\\\".git\\\\\" /NFL /NDL /NJH /NJS\")",
+      "Bash(cmd //c 'robocopy \"C:\\\\Users\\\\HP\\\\Desktop\\\\Coding Folders\\\\ordo\" \"C:\\\\Users\\\\HP\\\\Desktop\\\\Coding Folders\\\\ordello\" /E /XD .git /NFL /NDL /NJH /NJS')",
+      "Bash(powershell -Command \"Copy-Item -Path 'C:\\\\Users\\\\HP\\\\Desktop\\\\Coding Folders\\\\ordo\\\\*' -Destination 'C:\\\\Users\\\\HP\\\\Desktop\\\\Coding Folders\\\\ordello' -Recurse -Force -Exclude '.git'\")"
+    ]
+  }
+}
