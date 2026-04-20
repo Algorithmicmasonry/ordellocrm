@@ -47,7 +47,7 @@ export async function deleteOrder(orderId: string) {
     if (!order) return { success: false, error: "Order not found" };
 
     if (order.status === "DELIVERED") {
-      await restoreInventoryFromDelivery(orderId, ctx.userId);
+      await restoreInventoryFromDelivery(orderId, ctx.organizationId, ctx.userId);
     }
 
     await db.order.delete({ where: { id: orderId } });

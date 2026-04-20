@@ -17,7 +17,7 @@ export async function calculateRevenue(
 ): Promise<number> {
   const where: any = {
     status: OrderStatus.DELIVERED,
-    ...(organizationId && { organizationId }),
+    ...(organizationId ? { organizationId } : {}),
   }
 
   if (startDate && endDate) {
@@ -108,6 +108,10 @@ export async function calculateProfit(
     expenseWhere.currency = currency
   }
 
+  if (organizationId) {
+    expenseWhere.organizationId = organizationId
+  }
+
   const expenses = await db.expense.findMany({
     where: expenseWhere,
   })
@@ -182,9 +186,9 @@ export async function calculateSalesRepStats(
  *   during distribution, so only deduct from AgentStock.
  * - Direct/warehouse order (no agent): deduct from Product.currentStock.
  */
-export async function updateInventoryOnDelivery(orderId: string, userId?: string): Promise<void> {
-  const order = await db.order.findUnique({
-    where: { id: orderId },
+export async function updateInventoryOnDelivery(orderId: string, organizationId: string, userId?: string): Promise<void> {
+  const order = await db.order.findFirst({
+    where: { id: orderId, organizationId },
     include: {
       items: {
         include: {
@@ -242,8 +246,8 @@ export async function updateInventoryOnDelivery(orderId: string, userId?: string
       })
 
       // Log movement — balance is current warehouse stock (unchanged for agent orders)
-      const product = await db.product.findUnique({
-        where: { id: item.productId },
+      const product = await db.product.findFirst({
+        where: { id: item.productId, organizationId },
         select: { currentStock: true },
       })
       await logStockMovement({
@@ -272,9 +276,9 @@ export async function updateInventoryOnDelivery(orderId: string, userId?: string
  * Mirrors updateInventoryOnDelivery: restores to agent stock or warehouse
  * depending on whether the order has an agent.
  */
-export async function restoreInventoryFromDelivery(orderId: string, userId?: string): Promise<void> {
-  const order = await db.order.findUnique({
-    where: { id: orderId },
+export async function restoreInventoryFromDelivery(orderId: string, organizationId: string, userId?: string): Promise<void> {
+  const order = await db.order.findFirst({
+    where: { id: orderId, organizationId },
     include: {
       items: true,
     },
@@ -320,8 +324,8 @@ export async function restoreInventoryFromDelivery(orderId: string, userId?: str
         })
       }
 
-      const product = await db.product.findUnique({
-        where: { id: item.productId },
+      const product = await db.product.findFirst({
+        where: { id: item.productId, organizationId },
         select: { currentStock: true },
       })
       await logStockMovement({
@@ -360,11 +364,11 @@ export async function restoreInventoryFromDelivery(orderId: string, userId?: str
  * Check if a product is low on stock and send notifications to admins/inventory managers
  * Call this whenever inventory is updated (orders delivered, stock adjusted, etc.)
  */
-export async function checkAndNotifyLowStock(productId: string): Promise<void> {
+export async function checkAndNotifyLowStock(productId: string, organizationId: string): Promise<void> {
   try {
     // Get the product with current stock, reorder point, and agent stock
-    const product = await db.product.findUnique({
-      where: { id: productId },
+    const product = await db.product.findFirst({
+      where: { id: productId, organizationId },
       select: {
         id: true,
         name: true,
@@ -391,29 +395,29 @@ export async function checkAndNotifyLowStock(productId: string): Promise<void> {
         `Low stock alert for ${product.name}: ${totalStock} (warehouse: ${product.currentStock}, agents: ${agentTotal}) <= ${product.reorderPoint}`
       )
 
-      // Get all active admins and inventory managers
-      const recipients = await db.user.findMany({
+      // Get all active admins and inventory managers in this org
+      const members = await db.organizationMember.findMany({
         where: {
-          role: {
-            in: ['ADMIN', 'INVENTORY_MANAGER'],
-          },
+          organizationId,
+          role: { in: ['ADMIN', 'OWNER', 'INVENTORY_MANAGER'] },
           isActive: true,
         },
-        select: { id: true },
+        select: { userId: true },
       })
 
-      if (recipients.length === 0) {
+      if (members.length === 0) {
         console.log('No active admins or inventory managers found')
         return
       }
 
-      const recipientIds = recipients.map((r) => r.id)
+      const recipientIds = members.map((m) => m.userId)
       const title = `Low Stock Alert: ${product.name}`
       const message = `${product.name} is running low on stock (Total: ${totalStock}, Reorder Point: ${product.reorderPoint})`
 
       // Create in-app notifications
       await createBulkNotifications({
         userIds: recipientIds,
+        organizationId,
         type: 'LOW_STOCK_ALERT',
         title,
         message,

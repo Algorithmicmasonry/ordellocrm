@@ -480,9 +480,9 @@ export async function updateOrderStatus(
     });
 
     if (status === OrderStatus.DELIVERED && order.status !== OrderStatus.DELIVERED) {
-      await updateInventoryOnDelivery(orderId, ctx.userId);
+      await updateInventoryOnDelivery(orderId, ctx.organizationId, ctx.userId);
       for (const item of updatedOrder.items) {
-        await checkAndNotifyLowStock(item.productId);
+        await checkAndNotifyLowStock(item.productId, ctx.organizationId);
       }
     }
 

@@ -125,9 +125,9 @@ export async function updateOrderStatus(orderId: string, status: string, reason?
     if (!validStatuses.has(status)) return { success: false, error: "Invalid status value" };
 
     if (previousStatus === "DELIVERED" && status !== "DELIVERED") {
-      await restoreInventoryFromDelivery(orderId, ctx.userId);
+      await restoreInventoryFromDelivery(orderId, ctx.organizationId, ctx.userId);
     } else if (status === "DELIVERED" && previousStatus !== "DELIVERED") {
-      await updateInventoryOnDelivery(orderId, ctx.userId);
+      await updateInventoryOnDelivery(orderId, ctx.organizationId, ctx.userId);
     }
 
     const updateData: any = { status };

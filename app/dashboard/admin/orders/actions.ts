@@ -368,9 +368,9 @@ export async function updateOrderStatus(
     const previousStatus = order.status;
 
     if (previousStatus === OrderStatus.DELIVERED && status !== OrderStatus.DELIVERED) {
-      await restoreInventoryFromDelivery(orderId, ctx.userId);
+      await restoreInventoryFromDelivery(orderId, ctx.organizationId, ctx.userId);
     } else if (status === OrderStatus.DELIVERED && previousStatus !== OrderStatus.DELIVERED) {
-      await updateInventoryOnDelivery(orderId, ctx.userId);
+      await updateInventoryOnDelivery(orderId, ctx.organizationId, ctx.userId);
     }
 
     const updatedOrder = await db.order.update({
@@ -387,7 +387,7 @@ export async function updateOrderStatus(
 
     if (status === OrderStatus.DELIVERED) {
       for (const item of updatedOrder.items) {
-        await checkAndNotifyLowStock(item.productId);
+        await checkAndNotifyLowStock(item.productId, ctx.organizationId);
       }
     }
 

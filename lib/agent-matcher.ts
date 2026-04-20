@@ -20,11 +20,11 @@ export interface AgentOption {
  * Returns active delivery agents for an org so the AI can pick the best one.
  * organizationId is required — returns only that org's agents.
  */
-export async function getAvailableAgents(organizationId?: string): Promise<AgentOption[]> {
+export async function getAvailableAgents(organizationId: string): Promise<AgentOption[]> {
   const agents = await db.agent.findMany({
     where: {
+      organizationId,
       isActive: true,
-      ...(organizationId ? { organizationId } : {}),
     },
     select: {
       id: true,
