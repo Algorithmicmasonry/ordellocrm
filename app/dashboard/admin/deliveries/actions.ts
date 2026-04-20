@@ -1,8 +1,7 @@
 "use server";
 
 import { db } from "@/lib/db";
-import { auth } from "@/lib/auth";
-import { headers } from "next/headers";
+import { requireOrgContext } from "@/lib/org-context";
 import { Currency, Prisma } from "@prisma/client";
 import type { TimePeriod } from "@/lib/types";
 import { getDateRange } from "@/lib/date-utils";
@@ -29,17 +28,11 @@ export type PaginationParams = {
 
 export type DeliveryWithRelations = Prisma.OrderGetPayload<{
   include: {
-    assignedTo: {
-      select: { id: true; name: true; email: true };
-    };
-    agent: {
-      select: { id: true; name: true; location: true };
-    };
+    assignedTo: { select: { id: true; name: true; email: true } };
+    agent: { select: { id: true; name: true; location: true } };
     items: {
       include: {
-        product: {
-          select: { id: true; name: true };
-        };
+        product: { select: { id: true; name: true } };
       };
     };
   };
@@ -47,12 +40,7 @@ export type DeliveryWithRelations = Prisma.OrderGetPayload<{
 
 type DeliveriesData = {
   deliveries: DeliveryWithRelations[];
-  pagination: {
-    total: number;
-    page: number;
-    perPage: number;
-    totalPages: number;
-  };
+  pagination: { total: number; page: number; perPage: number; totalPages: number };
 };
 
 export type DeliveryStatsData = {
@@ -62,17 +50,21 @@ export type DeliveryStatsData = {
   avgPerDay: number;
 };
 
+function requireAdminOrRep(role: string) {
+  if (role !== "ADMIN" && role !== "OWNER" && role !== "SALES_REP") {
+    throw new Error("Unauthorized");
+  }
+}
+
 export async function getAgentsForFilter(): Promise<
   ActionResponse<{ id: string; name: string }[]>
 > {
   try {
-    const session = await auth.api.getSession({ headers: await headers() });
-    if (!session?.user) {
-      return { success: false, message: "Unauthorized" };
-    }
+    const ctx = await requireOrgContext();
+    requireAdminOrRep(ctx.role);
 
     const agents = await db.agent.findMany({
-      where: { isActive: true },
+      where: { organizationId: ctx.organizationId, isActive: true },
       select: { id: true, name: true },
       orderBy: { name: "asc" },
     });
@@ -92,12 +84,9 @@ export async function getDeliveries(
   endDateParam?: string,
 ): Promise<ActionResponse<DeliveriesData>> {
   try {
-    const session = await auth.api.getSession({ headers: await headers() });
-    if (!session?.user) {
-      return { success: false, message: "You must be logged in to view deliveries" };
-    }
+    const ctx = await requireOrgContext();
+    requireAdminOrRep(ctx.role);
 
-    // Build date range anchored to deliveredAt
     let startDate: Date;
     let endDate: Date | undefined;
 
@@ -111,19 +100,13 @@ export async function getDeliveries(
     }
 
     const where: Prisma.OrderWhereInput = {
+      organizationId: ctx.organizationId,
       status: "DELIVERED",
-      deliveredAt: endDate
-        ? { gte: startDate, lte: endDate }
-        : { gte: startDate },
+      deliveredAt: endDate ? { gte: startDate, lte: endDate } : { gte: startDate },
     };
 
-    if (filters.agentId) {
-      where.agentId = filters.agentId;
-    }
-
-    if (filters.currency) {
-      where.currency = filters.currency;
-    }
+    if (filters.agentId) where.agentId = filters.agentId;
+    if (filters.currency) where.currency = filters.currency;
 
     if (filters.search) {
       const searchOrConditions: Prisma.OrderWhereInput[] = [
@@ -131,9 +114,7 @@ export async function getDeliveries(
         { customerPhone: { contains: filters.search, mode: "insensitive" } },
       ];
       const searchAsNumber = parseInt(filters.search, 10);
-      if (!isNaN(searchAsNumber)) {
-        searchOrConditions.push({ orderNumber: searchAsNumber });
-      }
+      if (!isNaN(searchAsNumber)) searchOrConditions.push({ orderNumber: searchAsNumber });
       where.AND = [{ OR: searchOrConditions }];
     }
 
@@ -144,11 +125,7 @@ export async function getDeliveries(
         include: {
           assignedTo: { select: { id: true, name: true, email: true } },
           agent: { select: { id: true, name: true, location: true } },
-          items: {
-            include: {
-              product: { select: { id: true, name: true } },
-            },
-          },
+          items: { include: { product: { select: { id: true, name: true } } } },
         },
         orderBy: { deliveredAt: "desc" },
         skip: (pagination.page - 1) * pagination.perPage,
@@ -182,10 +159,8 @@ export async function getDeliveryStats(
   endDateParam?: string,
 ): Promise<ActionResponse<DeliveryStatsData>> {
   try {
-    const session = await auth.api.getSession({ headers: await headers() });
-    if (!session?.user) {
-      return { success: false, message: "Unauthorized" };
-    }
+    const ctx = await requireOrgContext();
+    requireAdminOrRep(ctx.role);
 
     let startDate: Date;
     let endDate: Date | undefined;
@@ -200,34 +175,25 @@ export async function getDeliveryStats(
     }
 
     const where: Prisma.OrderWhereInput = {
+      organizationId: ctx.organizationId,
       status: "DELIVERED",
-      deliveredAt: endDate
-        ? { gte: startDate, lte: endDate }
-        : { gte: startDate },
+      deliveredAt: endDate ? { gte: startDate, lte: endDate } : { gte: startDate },
     };
 
-    if (currency) {
-      where.currency = currency;
-    }
+    if (currency) where.currency = currency;
 
-    const [totalDeliveries, revenueData, ordersForFulfillment] =
-      await Promise.all([
-        db.order.count({ where }),
-        db.order.aggregate({ where, _sum: { totalAmount: true } }),
-        db.order.findMany({
-          where,
-          select: { createdAt: true, deliveredAt: true },
-        }),
-      ]);
+    const [totalDeliveries, revenueData, ordersForFulfillment] = await Promise.all([
+      db.order.count({ where }),
+      db.order.aggregate({ where, _sum: { totalAmount: true } }),
+      db.order.findMany({ where, select: { createdAt: true, deliveredAt: true } }),
+    ]);
 
     const totalRevenue = revenueData._sum.totalAmount ?? 0;
 
     const avgFulfillmentDays =
       ordersForFulfillment.length > 0
         ? ordersForFulfillment.reduce(
-            (sum, o) =>
-              sum +
-              (o.deliveredAt!.getTime() - o.createdAt.getTime()),
+            (sum, o) => sum + (o.deliveredAt!.getTime() - o.createdAt.getTime()),
             0,
           ) /
           ordersForFulfillment.length /
@@ -239,17 +205,11 @@ export async function getDeliveryStats(
       1,
       Math.ceil((effectiveEnd.getTime() - startDate.getTime()) / MS_PER_DAY),
     );
-    const avgPerDay = totalDeliveries / numDays;
 
     return {
       success: true,
       message: "Stats loaded",
-      data: {
-        totalDeliveries,
-        totalRevenue,
-        avgFulfillmentDays,
-        avgPerDay,
-      },
+      data: { totalDeliveries, totalRevenue, avgFulfillmentDays, avgPerDay: totalDeliveries / numDays },
     };
   } catch (error) {
     console.error("Error fetching delivery stats:", error);

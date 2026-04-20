@@ -1,32 +1,25 @@
 "use server";
 
 import { db } from "@/lib/db";
-import { auth } from "@/lib/auth";
-import { headers } from "next/headers";
+import { requireOrgContext } from "@/lib/org-context";
 
-/**
- * Get low stock report - Products at or below reorder point
- */
+function requireInventoryAccess(role: string) {
+  if (role !== "ADMIN" && role !== "OWNER" && role !== "INVENTORY_MANAGER") {
+    throw new Error("Unauthorized");
+  }
+}
+
 export async function getLowStockReport() {
   try {
-    // Authorization check
-    const session = await auth.api.getSession({ headers: await headers() });
-    if (!session?.user) {
-      return { success: false, error: "Unauthorized" };
-    }
-
-    const user = await db.user.findUnique({ where: { id: session.user.id } });
-    if (user?.role !== "ADMIN" && user?.role !== "INVENTORY_MANAGER") {
-      return { success: false, error: "Insufficient permissions" };
-    }
+    const ctx = await requireOrgContext();
+    requireInventoryAccess(ctx.role);
 
     const products = await db.product.findMany({
       where: {
+        organizationId: ctx.organizationId,
         isDeleted: false,
         isActive: true,
-        currentStock: {
-          lte: db.product.fields.reorderPoint,
-        },
+        currentStock: { lte: db.product.fields.reorderPoint },
       },
       select: {
         id: true,
@@ -38,9 +31,7 @@ export async function getLowStockReport() {
         productPrices: true,
         updatedAt: true,
       },
-      orderBy: {
-        currentStock: "asc",
-      },
+      orderBy: { currentStock: "asc" },
     });
 
     return { success: true, data: products };
@@ -50,161 +41,79 @@ export async function getLowStockReport() {
   }
 }
 
-/**
- * Get agent distribution stats - Warehouse vs agent breakdown
- */
 export async function getAgentDistributionStats() {
   try {
-    // Authorization check
-    const session = await auth.api.getSession({ headers: await headers() });
-    if (!session?.user) {
-      return { success: false, error: "Unauthorized" };
-    }
+    const ctx = await requireOrgContext();
+    requireInventoryAccess(ctx.role);
 
-    const user = await db.user.findUnique({ where: { id: session.user.id } });
-    if (user?.role !== "ADMIN" && user?.role !== "INVENTORY_MANAGER") {
-      return { success: false, error: "Insufficient permissions" };
-    }
-
-    // Get warehouse stock
-    const products = await db.product.findMany({
-      where: {
-        isDeleted: false,
-        isActive: true,
-      },
-      select: {
-        id: true,
-        name: true,
-        currentStock: true,
-        currency: true,
-        productPrices: true,
-      },
-    });
-
-    const warehouseStock = products.reduce(
-      (sum, product) => sum + product.currentStock,
-      0,
-    );
-    const warehouseValue = products.reduce((sum, product) => {
-      const productPrice = product.productPrices.find(
-        (p) => p.currency === product.currency
-      );
-      const cost = productPrice?.cost || 0;
-      return sum + product.currentStock * cost;
-    }, 0);
-
-    // Get agent stock
-    const agents = await db.agent.findMany({
-      where: {
-        isActive: true,
-      },
-      include: {
-        stock: {
-          include: {
-            product: {
-              select: {
-                name: true,
-                currency: true,
-                productPrices: true,
-              },
+    const [products, agents] = await Promise.all([
+      db.product.findMany({
+        where: { organizationId: ctx.organizationId, isDeleted: false, isActive: true },
+        select: { id: true, name: true, currentStock: true, currency: true, productPrices: true },
+      }),
+      db.agent.findMany({
+        where: { organizationId: ctx.organizationId, isActive: true },
+        include: {
+          stock: {
+            include: {
+              product: { select: { name: true, currency: true, productPrices: true } },
             },
           },
         },
-      },
-    });
+      }),
+    ]);
+
+    const warehouseStock = products.reduce((sum, p) => sum + p.currentStock, 0);
+    const warehouseValue = products.reduce((sum, p) => {
+      const productPrice = p.productPrices.find((pp) => pp.currency === p.currency);
+      return sum + p.currentStock * (productPrice?.cost || 0);
+    }, 0);
 
     const agentDistribution = agents.map((agent) => {
-      const totalStock = agent.stock.reduce(
-        (sum, item) => sum + item.quantity,
-        0,
-      );
+      const totalStock = agent.stock.reduce((sum, item) => sum + item.quantity, 0);
       const stockValue = agent.stock.reduce((sum, item) => {
         const productPrice = item.product.productPrices.find(
           (p) => p.currency === item.product.currency
         );
-        const cost = productPrice?.cost || 0;
-        return sum + item.quantity * cost;
+        return sum + item.quantity * (productPrice?.cost || 0);
       }, 0);
-      const defectiveCount = agent.stock.reduce(
-        (sum, item) => sum + item.defective,
-        0,
-      );
-      const missingCount = agent.stock.reduce(
-        (sum, item) => sum + item.missing,
-        0,
-      );
+      const defectiveCount = agent.stock.reduce((sum, item) => sum + item.defective, 0);
+      const missingCount = agent.stock.reduce((sum, item) => sum + item.missing, 0);
 
-      return {
-        agentId: agent.id,
-        agentName: agent.name,
-        location: agent.location,
-        totalStock,
-        stockValue,
-        defectiveCount,
-        missingCount,
-      };
+      return { agentId: agent.id, agentName: agent.name, location: agent.location, totalStock, stockValue, defectiveCount, missingCount };
     });
 
-    const totalAgentStock = agentDistribution.reduce(
-      (sum, agent) => sum + agent.totalStock,
-      0,
-    );
-    const totalAgentValue = agentDistribution.reduce(
-      (sum, agent) => sum + agent.stockValue,
-      0,
-    );
+    const totalAgentStock = agentDistribution.reduce((sum, a) => sum + a.totalStock, 0);
+    const totalAgentValue = agentDistribution.reduce((sum, a) => sum + a.stockValue, 0);
 
     return {
       success: true,
       data: {
-        warehouse: {
-          stock: warehouseStock,
-          value: warehouseValue,
-        },
-        agents: {
-          stock: totalAgentStock,
-          value: totalAgentValue,
-          distribution: agentDistribution,
-        },
+        warehouse: { stock: warehouseStock, value: warehouseValue },
+        agents: { stock: totalAgentStock, value: totalAgentValue, distribution: agentDistribution },
         totalStock: warehouseStock + totalAgentStock,
         totalValue: warehouseValue + totalAgentValue,
       },
     };
   } catch (error) {
     console.error("Error fetching agent distribution stats:", error);
-    return {
-      success: false,
-      error: "Failed to fetch agent distribution stats",
-    };
+    return { success: false, error: "Failed to fetch agent distribution stats" };
   }
 }
 
-/**
- * Get stock movement history - Recent stock changes
- */
 export async function getStockMovementHistory(days: number = 30) {
   try {
-    // Authorization check
-    const session = await auth.api.getSession({ headers: await headers() });
-    if (!session?.user) {
-      return { success: false, error: "Unauthorized" };
-    }
-
-    const user = await db.user.findUnique({ where: { id: session.user.id } });
-    if (user?.role !== "ADMIN" && user?.role !== "INVENTORY_MANAGER") {
-      return { success: false, error: "Insufficient permissions" };
-    }
+    const ctx = await requireOrgContext();
+    requireInventoryAccess(ctx.role);
 
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days);
 
-    // Get recently updated products
     const products = await db.product.findMany({
       where: {
+        organizationId: ctx.organizationId,
         isDeleted: false,
-        updatedAt: {
-          gte: startDate,
-        },
+        updatedAt: { gte: startDate },
       },
       select: {
         id: true,
@@ -213,9 +122,7 @@ export async function getStockMovementHistory(days: number = 30) {
         openingStock: true,
         updatedAt: true,
       },
-      orderBy: {
-        updatedAt: "desc",
-      },
+      orderBy: { updatedAt: "desc" },
       take: 50,
     });
 
@@ -226,28 +133,13 @@ export async function getStockMovementHistory(days: number = 30) {
   }
 }
 
-/**
- * Get reorder recommendations based on current stock levels
- */
 export async function getReorderRecommendations() {
   try {
-    // Authorization check
-    const session = await auth.api.getSession({ headers: await headers() });
-    if (!session?.user) {
-      return { success: false, error: "Unauthorized" };
-    }
+    const ctx = await requireOrgContext();
+    requireInventoryAccess(ctx.role);
 
-    const user = await db.user.findUnique({ where: { id: session.user.id } });
-    if (user?.role !== "ADMIN" && user?.role !== "INVENTORY_MANAGER") {
-      return { success: false, error: "Insufficient permissions" };
-    }
-
-    // Get products below or near reorder point
     const products = await db.product.findMany({
-      where: {
-        isDeleted: false,
-        isActive: true,
-      },
+      where: { organizationId: ctx.organizationId, isDeleted: false, isActive: true },
       select: {
         id: true,
         name: true,
@@ -260,21 +152,13 @@ export async function getReorderRecommendations() {
       },
     });
 
-    // Calculate recommendations
     const recommendations = products
-      .filter((product) => product.currentStock <= product.reorderPoint * 1.5)
+      .filter((p) => p.currentStock <= p.reorderPoint * 1.5)
       .map((product) => {
-        const productPrice = product.productPrices.find(
-          (p) => p.currency === product.currency
-        );
+        const productPrice = product.productPrices.find((p) => p.currency === product.currency);
         const cost = productPrice?.cost || 0;
-
         const stockDeficit = product.reorderPoint - product.currentStock;
-        const recommendedOrderQty =
-          stockDeficit > 0 ? stockDeficit + product.reorderPoint : 0;
-
-        // Estimate days until stockout (simple calculation)
-        // Assuming constant daily usage based on difference between opening and current
+        const recommendedOrderQty = stockDeficit > 0 ? stockDeficit + product.reorderPoint : 0;
         const totalUsed = product.openingStock - product.currentStock;
         const daysUntilStockout =
           totalUsed > 0 ? Math.floor(product.currentStock / (totalUsed / 30)) : 999;
@@ -300,9 +184,6 @@ export async function getReorderRecommendations() {
     return { success: true, data: recommendations };
   } catch (error) {
     console.error("Error fetching reorder recommendations:", error);
-    return {
-      success: false,
-      error: "Failed to fetch reorder recommendations",
-    };
+    return { success: false, error: "Failed to fetch reorder recommendations" };
   }
 }
