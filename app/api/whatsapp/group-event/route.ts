@@ -75,10 +75,16 @@ async function handleAgentReply(body: GroupEvent) {
     return NextResponse.json({ error: "No reply text" }, { status: 400 });
   }
 
-  // Find order — by orderId (globally unique) or orderNumber + organizationId
+  // Find order — by orderId + org, or orderNumber + organizationId
   let order;
-  if (orderId) {
-    order = await db.order.findUnique({
+  if (orderId && organizationId) {
+    order = await db.order.findFirst({
+      where: { id: orderId, organizationId },
+      include: { items: { include: { product: true } } },
+    });
+  } else if (orderId) {
+    // orderId without organizationId — UUID is globally unique so this is safe
+    order = await db.order.findFirst({
       where: { id: orderId },
       include: { items: { include: { product: true } } },
     });
@@ -89,12 +95,9 @@ async function handleAgentReply(body: GroupEvent) {
       include: { items: { include: { product: true } } },
     });
   } else if (orderNumber) {
-    // No organizationId — attempt a best-effort lookup (ambiguous in multi-tenant)
-    console.warn(`[whatsapp/group-event] orderNumber lookup without organizationId — may be ambiguous`);
-    order = await db.order.findFirst({
-      where: { orderNumber },
-      include: { items: { include: { product: true } } },
-    });
+    // orderNumber without organizationId is ambiguous in multi-tenant — reject
+    console.error(`[whatsapp/group-event] orderNumber lookup without organizationId — rejected (ambiguous in multi-tenant)`);
+    return NextResponse.json({ error: "organizationId required for orderNumber lookup" }, { status: 400 });
   }
 
   if (!order) {
