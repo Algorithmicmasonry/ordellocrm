@@ -398,6 +398,7 @@ export async function createOrderV2(
             await triggerOutboundCall(
               {
                 id: savedOrder.id,
+                organizationId,
                 orderNumber: savedOrder.orderNumber,
                 customerName: savedOrder.customerName,
                 customerPhone: savedOrder.customerPhone,

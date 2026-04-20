@@ -115,6 +115,7 @@ export async function triggerOutboundCall(
     console.log(`[vapi] call created — vapiCallId=${vapiCallId}`);
 
     // Persist log + update order in parallel
+    // Use organizationId in the order update as a safety guard
     try {
       await Promise.all([
         db.aiCallLog.create({
@@ -126,7 +127,7 @@ export async function triggerOutboundCall(
           },
         }),
         db.order.update({
-          where: { id: order.id },
+          where: { id: order.id, organizationId: order.organizationId },
           data: {
             aiCallAttempts: attemptNumber,
             aiCallStatus: "IN_PROGRESS",
@@ -165,6 +166,7 @@ export async function triggerOutboundCall(
  */
 export async function scheduleNextCall(
   orderId: string,
+  organizationId: string,
   nextAttempt: number,
   cycleNumber: number,
   cycleStartAt?: Date,
@@ -183,7 +185,7 @@ export async function scheduleNextCall(
       console.log(`[vapi] all attempts exhausted — marking UNREACHABLE, next cycle=${nextCycleNumber} starts=${nextCycleStart.toISOString()}`);
 
       await db.order.update({
-        where: { id: orderId },
+        where: { id: orderId, organizationId },
         data: {
           aiCallStatus: "UNREACHABLE",
           aiCycleNumber: nextCycleNumber,
@@ -199,7 +201,7 @@ export async function scheduleNextCall(
     console.log(`[vapi] scheduling attempt=${nextAttempt} at=${nextCallTime.toISOString()}`);
 
     await db.order.update({
-      where: { id: orderId },
+      where: { id: orderId, organizationId },
       data: {
         aiCallStatus: "PENDING",
         aiNextCallAt: nextCallTime,

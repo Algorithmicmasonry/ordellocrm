@@ -21,6 +21,7 @@ export type CallOutcome =
 
 export interface OrderContext {
   id: string;
+  organizationId: string;
   orderNumber: number;
   customerName: string;
   customerPhone: string;

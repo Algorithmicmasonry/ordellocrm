@@ -1,10 +1,40 @@
 import { db } from "@/lib/db";
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
-export async function GET() {
+/**
+ * GET /api/products/available?orgSlug=kolor-naturals
+ *
+ * Public endpoint used by the embedded order form.
+ * orgSlug is required — returns only that org's active products.
+ */
+export async function GET(req: NextRequest) {
   try {
+    const { searchParams } = req.nextUrl;
+    const orgSlug = searchParams.get("orgSlug");
+
+    if (!orgSlug) {
+      return NextResponse.json(
+        { success: false, error: "orgSlug is required" },
+        { status: 400 },
+      );
+    }
+
+    // Resolve org from slug
+    const org = await db.organization.findUnique({
+      where: { slug: orgSlug },
+      select: { id: true, status: true },
+    });
+
+    if (!org) {
+      return NextResponse.json(
+        { success: false, error: "Organization not found" },
+        { status: 404 },
+      );
+    }
+
     const products = await db.product.findMany({
       where: {
+        organizationId: org.id,
         isDeleted: false,
         isActive: true,
       },
@@ -14,9 +44,7 @@ export async function GET() {
         sku: true,
         currentStock: true,
       },
-      orderBy: {
-        name: "asc",
-      },
+      orderBy: { name: "asc" },
     });
 
     return NextResponse.json({ success: true, products });
@@ -24,7 +52,7 @@ export async function GET() {
     console.error("Error fetching available products:", error);
     return NextResponse.json(
       { success: false, error: "Failed to fetch products" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
