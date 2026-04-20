@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import SalesRepDetailsClient from "./_components/sales-rep-details-client";
 import { Skeleton } from "@/components/ui/skeleton";
 import { db } from "@/lib/db";
+import { requireOrgContext } from "@/lib/org-context";
 import type { OrderStatus, OrderSource, Currency } from "@prisma/client";
 import type { Metadata } from "next";
 import { TimePeriod } from "@/lib/types";
@@ -12,7 +13,7 @@ import {
   calculatePercentageChange,
 } from "@/lib/date-utils";
 
-async function getSalesRepDetails(repId: string, period: TimePeriod = "month", timezone?: string, startDateParam?: string, endDateParam?: string) {
+async function getSalesRepDetails(organizationId: string, repId: string, period: TimePeriod = "month", timezone?: string, startDateParam?: string, endDateParam?: string) {
   const { startDate, endDate } = (startDateParam && endDateParam)
     ? { startDate: new Date(startDateParam), endDate: new Date(endDateParam) }
     : getDateRange(period, timezone);
@@ -20,37 +21,30 @@ async function getSalesRepDetails(repId: string, period: TimePeriod = "month", t
     ? null
     : getPreviousPeriodRange(period, timezone);
 
-  // Fetch sales rep with orders in BOTH periods
-  const salesRep = await db.user.findUnique({
-    where: {
-      id: repId,
-      role: "SALES_REP",
-    },
-    include: {
-      orders: {
-        where: {
-          createdAt: {
-            gte: previousRange ? previousRange.startDate : startDate,
-            lte: endDate,
-          },
-        },
-        include: {
-          items: {
-            include: {
-              product: true,
-            },
-          },
-        },
-        orderBy: {
-          createdAt: "desc",
-        },
-      },
-    },
+  // Verify the rep belongs to this org
+  const member = await db.organizationMember.findFirst({
+    where: { organizationId, userId: repId, role: "SALES_REP" },
+    include: { user: { select: { id: true, name: true, email: true, image: true, createdAt: true, isActive: true } } },
   });
 
-  if (!salesRep) {
-    notFound();
-  }
+  if (!member) notFound();
+
+  const salesRepOrders = await db.order.findMany({
+    where: {
+      organizationId,
+      assignedToId: repId,
+      createdAt: {
+        gte: previousRange ? previousRange.startDate : startDate,
+        lte: endDate,
+      },
+    },
+    include: {
+      items: { include: { product: true } },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+
+  const salesRep = { ...member.user, orders: salesRepOrders };
 
   // Split orders into current and previous periods
   const currentOrders = salesRep.orders.filter(
@@ -266,6 +260,7 @@ export default async function SalesRepDetailsPage({
   params,
   searchParams,
 }: PageProps) {
+  const ctx = await requireOrgContext();
   const { id } = await params;
   const query = await searchParams;
   const period = (query?.period || "month") as TimePeriod;
@@ -273,7 +268,7 @@ export default async function SalesRepDetailsPage({
   const startDate = query?.startDate;
   const endDate = query?.endDate;
 
-  const salesRep = await getSalesRepDetails(id, period, timezone, startDate, endDate);
+  const salesRep = await getSalesRepDetails(ctx.organizationId, id, period, timezone, startDate, endDate);
 
   return (
     <Suspense fallback={<SalesRepDetailsSkeleton />}>
@@ -315,12 +310,14 @@ export async function generateMetadata({
 }: {
   params: Promise<{ id: string }>;
 }): Promise<Metadata> {
+  const ctx = await requireOrgContext();
   const { id } = await params;
 
-  const salesRep = await db.user.findUnique({
-    where: { id },
-    select: { name: true },
+  const member = await db.organizationMember.findFirst({
+    where: { organizationId: ctx.organizationId, userId: id },
+    include: { user: { select: { name: true } } },
   });
+  const salesRep = member?.user ?? null;
 
   return {
     title: salesRep

@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import { SalesRepsClient } from "./_components";
 import { Skeleton } from "@/components/ui/skeleton";
 import { db } from "@/lib/db";
+import { requireOrgContext } from "@/lib/org-context";
 import { TimePeriod } from "@/lib/types";
 import type { Currency } from "@prisma/client";
 import {
@@ -11,7 +12,7 @@ import {
 } from "@/lib/date-utils";
 import { getCurrentHoH } from "@/lib/head-of-house";
 
-async function getSalesRepsData(period: TimePeriod = "month", timezone?: string, startDateParam?: string, endDateParam?: string) {
+async function getSalesRepsData(organizationId: string, period: TimePeriod = "month", timezone?: string, startDateParam?: string, endDateParam?: string) {
   const { startDate, endDate } = (startDateParam && endDateParam)
     ? { startDate: new Date(startDateParam), endDate: new Date(endDateParam) }
     : getDateRange(period, timezone);
@@ -19,33 +20,48 @@ async function getSalesRepsData(period: TimePeriod = "month", timezone?: string,
     ? null
     : getPreviousPeriodRange(period, timezone);
 
-  // Fetch all sales reps with their orders in BOTH periods
-  const salesReps = await db.user.findMany({
+  // Fetch all sales rep members for this org
+  const members = await db.organizationMember.findMany({
+    where: { organizationId, role: "SALES_REP", isActive: true, isAiAgent: false },
+    include: { user: { select: { id: true, name: true, email: true, image: true, createdAt: true, isActive: true } } },
+    orderBy: { user: { name: "asc" } },
+  });
+
+  const repIds = members.map((m) => m.userId);
+
+  // Fetch orders for all reps in this org across both periods
+  const allOrders = await db.order.findMany({
     where: {
-      role: "SALES_REP",
-    },
-    include: {
-      orders: {
-        where: {
-          createdAt: {
-            gte: previousRange ? previousRange.startDate : startDate,
-            lte: endDate,
-          },
-        },
-        select: {
-          id: true,
-          status: true,
-          totalAmount: true,
-          currency: true,
-          createdAt: true,
-          deliveredAt: true,
-        },
+      organizationId,
+      assignedToId: { in: repIds },
+      createdAt: {
+        gte: previousRange ? previousRange.startDate : startDate,
+        lte: endDate,
       },
     },
-    orderBy: {
-      createdAt: "desc",
+    select: {
+      id: true,
+      assignedToId: true,
+      status: true,
+      totalAmount: true,
+      currency: true,
+      createdAt: true,
+      deliveredAt: true,
     },
   });
+
+  // Group orders by rep
+  const ordersByRep = new Map<string, typeof allOrders>();
+  for (const m of members) ordersByRep.set(m.userId, []);
+  for (const o of allOrders) {
+    if (o.assignedToId) ordersByRep.get(o.assignedToId)?.push(o);
+  }
+
+  // Build salesReps shape matching the original (user + orders)
+  const salesReps = members.map((m) => ({
+    ...m.user,
+    orders: ordersByRep.get(m.userId) ?? [],
+  }));
 
   // Calculate stats for each rep with trends
   const salesRepsWithStats = salesReps.map((rep) => {
@@ -236,6 +252,7 @@ interface SalesRepsPageProps {
 export default async function SalesRepsPage({
   searchParams,
 }: SalesRepsPageProps) {
+  const ctx = await requireOrgContext();
   const params = await searchParams;
   const period = (params?.period || "month") as TimePeriod;
   const timezone = params?.tz;
@@ -243,8 +260,8 @@ export default async function SalesRepsPage({
   const endDate = params?.endDate;
 
   const [data, hoh] = await Promise.all([
-    getSalesRepsData(period, timezone, startDate, endDate),
-    getCurrentHoH(),
+    getSalesRepsData(ctx.organizationId, period, timezone, startDate, endDate),
+    getCurrentHoH(ctx.organizationId),
   ]);
 
   return (

@@ -1,6 +1,5 @@
 import { db } from "@/lib/db";
-import { auth } from "@/lib/auth";
-import { redirect } from "next/navigation";
+import { requireOrgContext } from "@/lib/org-context";
 import { RoundRobinClient } from "./_components";
 import { getCurrentRoundRobinIndex } from "@/lib/round-robin";
 import { Metadata } from "next";
@@ -10,69 +9,63 @@ export const metadata: Metadata = {
   description: "Configure the lead distribution sequence for your sales team",
 };
 
-async function getRoundRobinData() {
-  // Get current round-robin index
-  const currentIndex = await getCurrentRoundRobinIndex();
+async function getRoundRobinData(organizationId: string) {
+  const currentIndex = await getCurrentRoundRobinIndex(organizationId);
 
-  // Fetch all sales reps with their orders count
-  const salesReps = await db.user.findMany({
-    where: {
-      role: "SALES_REP",
-    },
+  const members = await db.organizationMember.findMany({
+    where: { organizationId, role: "SALES_REP", isAiAgent: false },
     include: {
-      orders: {
-        select: {
-          id: true,
-          status: true,
-        },
+      user: {
+        select: { id: true, name: true, email: true, image: true, isActive: true },
       },
     },
-    orderBy: {
-      name: "asc",
-    },
+    orderBy: { user: { name: "asc" } },
   });
 
-  // Separate active and excluded reps
-  const activeSalesReps = salesReps.filter((rep) => rep.isActive);
-  const excludedSalesReps = salesReps.filter((rep) => !rep.isActive);
+  const repIds = members.map((m) => m.userId);
+  const orders = await db.order.findMany({
+    where: { organizationId, assignedToId: { in: repIds } },
+    select: { assignedToId: true, status: true },
+  });
 
-  // Calculate next rep in line
-  const nextRepIndex = (currentIndex + 1) % activeSalesReps.length;
+  const ordersByRep = new Map<string, { id: string; status: string }[]>();
+  for (const m of members) ordersByRep.set(m.userId, []);
+  for (const o of orders) {
+    if (o.assignedToId) ordersByRep.get(o.assignedToId)?.push(o);
+  }
 
+  const salesReps = members.map((m) => {
+    const repOrders = ordersByRep.get(m.userId) ?? [];
+    return {
+      id: m.userId,
+      name: m.user.name,
+      email: m.user.email,
+      image: m.user.image,
+      isActive: m.isActive,
+      totalOrders: repOrders.length,
+      deliveredOrders: repOrders.filter((o) => o.status === "DELIVERED").length,
+      isOnline: m.isActive,
+    };
+  });
+
+  const activeSalesReps = salesReps.filter((r) => r.isActive);
+  const nextRepIndex = activeSalesReps.length > 0 ? (currentIndex + 1) % activeSalesReps.length : 0;
   const nextRep = activeSalesReps[nextRepIndex] || null;
 
-  // Calculate stats for each rep
-  const repsWithStats = salesReps.map((rep) => ({
-    ...rep,
-    totalOrders: rep.orders.length,
-    deliveredOrders: rep.orders.filter((o) => o.status === "DELIVERED").length,
-    // isOnline indicates availability: active reps are available, inactive are on break
-    isOnline: rep.isActive,
-  }));
-
   return {
-    salesReps: repsWithStats,
-    activeSalesReps: repsWithStats.filter((r) => r.isActive),
-    excludedSalesReps: repsWithStats.filter((r) => !r.isActive),
+    salesReps,
+    activeSalesReps,
+    excludedSalesReps: salesReps.filter((r) => !r.isActive),
     currentIndex,
-    nextRep: nextRep
-      ? repsWithStats.find((r) => r.id === nextRep.id) || null
-      : null,
+    nextRep,
     totalActive: activeSalesReps.length,
-    totalExcluded: excludedSalesReps.length,
+    totalExcluded: salesReps.filter((r) => !r.isActive).length,
   };
 }
 
 export default async function RoundRobinPage() {
-  const session = await auth.api.getSession({
-    headers: await import("next/headers").then((m) => m.headers()),
-  });
-
-  if (!session?.user || session.user.role !== "ADMIN") {
-    redirect("/login");
-  }
-
-  const data = await getRoundRobinData();
+  const ctx = await requireOrgContext();
+  const data = await getRoundRobinData(ctx.organizationId);
 
   return <RoundRobinClient {...data} />;
 }
