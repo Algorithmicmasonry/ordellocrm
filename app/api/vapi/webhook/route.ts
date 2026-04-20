@@ -101,25 +101,25 @@ async function handleToolCalls(body: VapiMessage) {
     try {
       switch (fnName) {
         case "confirmOrder":
-          result = await toolConfirmOrder(orderId);
+          result = await toolConfirmOrder(orderId, organizationId);
           break;
         case "postponeOrder":
-          result = await toolPostponeOrder(orderId, args);
+          result = await toolPostponeOrder(orderId, args, organizationId);
           break;
         case "cancelOrder":
-          result = await toolCancelOrder(orderId, args);
+          result = await toolCancelOrder(orderId, args, organizationId);
           break;
         case "updateDeliveryDetails":
-          result = await toolUpdateDeliveryDetails(orderId, args);
+          result = await toolUpdateDeliveryDetails(orderId, args, organizationId);
           break;
         case "addNote":
           result = await toolAddNote(orderId, args);
           break;
         case "scheduleFollowUp":
-          result = await toolScheduleFollowUp(orderId, args, metadata);
+          result = await toolScheduleFollowUp(orderId, args, metadata, organizationId);
           break;
         case "requestWhatsAppMessage":
-          result = await toolRequestWhatsApp(orderId, args, metadata);
+          result = await toolRequestWhatsApp(orderId, args, metadata, organizationId);
           break;
         case "reportDeliveryDispute":
           result = await toolReportDeliveryDispute(orderId, args, organizationId);
@@ -145,7 +145,9 @@ async function handleToolCalls(body: VapiMessage) {
 // Tool implementations
 // ---------------------------------------------------------------------------
 
-async function toolConfirmOrder(orderId: string): Promise<string> {
+async function toolConfirmOrder(orderId: string, organizationId?: string): Promise<string> {
+  const existing = organizationId ? await db.order.findFirst({ where: { id: orderId, organizationId } }) : null;
+  if (organizationId && !existing) return "Order not found.";
   const order = await db.order.update({
     where: { id: orderId },
     data: { status: "CONFIRMED", confirmedAt: new Date(), aiCallStatus: "REACHED" },
@@ -154,8 +156,10 @@ async function toolConfirmOrder(orderId: string): Promise<string> {
   return `Order #${order.orderNumber} confirmed successfully.`;
 }
 
-async function toolPostponeOrder(orderId: string, args: Record<string, unknown>): Promise<string> {
+async function toolPostponeOrder(orderId: string, args: Record<string, unknown>, organizationId?: string): Promise<string> {
   const reason = (args.reason as string) ?? "Customer requested postponement";
+  const existing = organizationId ? await db.order.findFirst({ where: { id: orderId, organizationId } }) : null;
+  if (organizationId && !existing) return "Order not found.";
   const order = await db.order.update({
     where: { id: orderId },
     data: { status: "POSTPONED", aiCallStatus: "REACHED" },
@@ -165,8 +169,10 @@ async function toolPostponeOrder(orderId: string, args: Record<string, unknown>)
   return `Order #${order.orderNumber} postponed. Reason: ${reason}`;
 }
 
-async function toolCancelOrder(orderId: string, args: Record<string, unknown>): Promise<string> {
+async function toolCancelOrder(orderId: string, args: Record<string, unknown>, organizationId?: string): Promise<string> {
   const reason = (args.reason as string) ?? "Customer requested cancellation";
+  const existing = organizationId ? await db.order.findFirst({ where: { id: orderId, organizationId } }) : null;
+  if (organizationId && !existing) return "Order not found.";
   const order = await db.order.update({
     where: { id: orderId },
     data: { status: "CANCELLED", cancelledAt: new Date(), aiCallStatus: "REACHED" },
@@ -176,7 +182,11 @@ async function toolCancelOrder(orderId: string, args: Record<string, unknown>): 
   return `Order #${order.orderNumber} cancelled. Reason: ${reason}`;
 }
 
-async function toolUpdateDeliveryDetails(orderId: string, args: Record<string, unknown>): Promise<string> {
+async function toolUpdateDeliveryDetails(orderId: string, args: Record<string, unknown>, organizationId?: string): Promise<string> {
+  if (organizationId) {
+    const existing = await db.order.findFirst({ where: { id: orderId, organizationId } });
+    if (!existing) return "Order not found.";
+  }
   const updates: Record<string, unknown> = {};
   const changes: string[] = [];
 
@@ -214,7 +224,12 @@ async function toolScheduleFollowUp(
   orderId: string,
   args: Record<string, unknown>,
   metadata?: CallMetadata,
+  organizationId?: string,
 ): Promise<string> {
+  if (organizationId) {
+    const existing = await db.order.findFirst({ where: { id: orderId, organizationId } });
+    if (!existing) return "Order not found.";
+  }
   const dateStr = args.dateTime as string | undefined;
   const reason = (args.reason as string) ?? "Customer requested callback";
 
@@ -244,11 +259,12 @@ async function toolRequestWhatsApp(
   orderId: string,
   args: Record<string, unknown>,
   metadata?: CallMetadata,
+  organizationId?: string,
 ): Promise<string> {
   const stage = (metadata?.stage as CallStage) ?? "confirmation";
 
-  const order = await db.order.findUnique({
-    where: { id: orderId },
+  const order = await db.order.findFirst({
+    where: { id: orderId, ...(organizationId ? { organizationId } : {}) },
     include: { items: { include: { product: true } } },
   });
   if (!order) return "Order not found.";
@@ -297,8 +313,8 @@ async function toolReportDeliveryDispute(
 
   await db.orderNote.create({ data: { orderId, note: `[DELIVERY DISPUTE] ${description}` } });
 
-  const order = await db.order.findUnique({
-    where: { id: orderId },
+  const order = await db.order.findFirst({
+    where: { id: orderId, ...(organizationId ? { organizationId } : {}) },
     select: { orderNumber: true, customerName: true, customerPhone: true, organizationId: true },
   });
 
@@ -334,14 +350,14 @@ async function toolAssignToDeliveryAgent(
 
   if (!agentId) {
     // No agent selected — return list so AI can choose
-    const agents = await getAvailableAgents(organizationId);
+    const agents = organizationId ? await getAvailableAgents(organizationId) : [];
 
     if (agents.length === 0) {
       return "No delivery agents are currently available. The admin will assign one manually.";
     }
 
-    const order = await db.order.findUnique({
-      where: { id: orderId },
+    const order = await db.order.findFirst({
+      where: { id: orderId, ...(organizationId ? { organizationId } : {}) },
       select: { city: true, state: true, deliveryAddress: true },
     });
 
@@ -354,8 +370,8 @@ async function toolAssignToDeliveryAgent(
     );
   }
 
-  const order = await db.order.findUnique({
-    where: { id: orderId },
+  const order = await db.order.findFirst({
+    where: { id: orderId, ...(organizationId ? { organizationId } : {}) },
     include: { items: { include: { product: true } } },
   });
   if (!order) return "Order not found.";
@@ -439,7 +455,7 @@ async function handleEndOfCallReport(body: VapiMessage) {
 
   console.log(`[vapi-webhook] end-of-call orderId=${orderId} outcome=${outcome} — scheduling retry`);
 
-  const order = await db.order.findUnique({
+  const order = await db.order.findFirst({
     where: { id: orderId },
     select: { aiCycleStartAt: true, customerWhatsapp: true, customerPhone: true, organizationId: true },
   });
@@ -456,8 +472,8 @@ async function handleEndOfCallReport(body: VapiMessage) {
   if (attemptNumber === 1 && order) {
     const whatsappNumber = order.customerWhatsapp ?? order.customerPhone;
 
-    const fullOrder = await db.order.findUnique({
-      where: { id: orderId },
+    const fullOrder = await db.order.findFirst({
+      where: { id: orderId, ...(order?.organizationId ? { organizationId: order.organizationId } : {}) },
       include: { items: { include: { product: true } } },
     });
 
