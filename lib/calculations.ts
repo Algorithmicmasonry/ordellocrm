@@ -127,24 +127,21 @@ export async function calculateProfit(
 export async function calculateSalesRepStats(
   salesRepId: string,
   startDate?: Date,
-  endDate?: Date
+  endDate?: Date,
+  organizationId?: string,
 ) {
   const where: any = {
     assignedToId: salesRepId,
+    ...(organizationId && { organizationId }),
   }
 
   if (startDate && endDate) {
-    where.createdAt = {
-      gte: startDate,
-      lte: endDate,
-    }
+    where.createdAt = { gte: startDate, lte: endDate }
   }
 
   const orders = await db.order.findMany({
     where,
-    include: {
-      items: true,
-    },
+    include: { items: true },
   })
 
   const totalOrders = orders.length

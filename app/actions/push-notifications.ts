@@ -231,27 +231,32 @@ export async function sendPushToUsers(
 }
 
 /**
- * Notify all admins (for order delivered event)
+ * Notify all admins of an org (for new orders, alerts, etc.)
+ * organizationId is required so we only notify the right org's admins.
  */
-export async function notifyAdmins(payload: {
-  title: string;
-  body: string;
-  url?: string;
-  orderId?: string;
-}) {
+export async function notifyAdmins(
+  payload: {
+    title: string;
+    body: string;
+    url?: string;
+    orderId?: string;
+  },
+  organizationId: string,
+) {
   try {
     console.log("👮 Notifying admins...");
 
-    // Get all active admin users
-    const admins = await db.user.findMany({
+    // Get OWNER + ADMIN members of this org
+    const adminMembers = await db.organizationMember.findMany({
       where: {
-        role: "ADMIN",
+        organizationId,
+        role: { in: ["OWNER", "ADMIN"] },
         isActive: true,
       },
-      select: { id: true },
+      select: { userId: true },
     });
 
-    const adminIds = admins.map((admin) => admin.id);
+    const adminIds = adminMembers.map((m) => m.userId);
     console.log(`Found ${adminIds.length} active admins`);
 
     return await sendPushToUsers(adminIds, {
