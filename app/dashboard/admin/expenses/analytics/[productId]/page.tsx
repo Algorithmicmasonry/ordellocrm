@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
-import { auth } from "@/lib/auth";
-import { redirect, notFound } from "next/navigation";
+import { requireOrgContext } from "@/lib/org-context";
+import { notFound } from "next/navigation";
 import { OrderStatus } from "@prisma/client";
 import ProductAnalyticsClient from "./_components/product-analytics-client";
 import { getDateRange } from "@/lib/date-utils";
@@ -8,10 +8,11 @@ import type { TimePeriod } from "@/lib/types";
 import { attributeExpense } from "@/lib/expense-utils";
 
 export async function generateMetadata({ params }: { params: Promise<{ productId: string }> }) {
+  const ctx = await requireOrgContext();
   const { productId } = await params;
 
-  const product = await db.product.findUnique({
-    where: { id: productId },
+  const product = await db.product.findFirst({
+    where: { id: productId, organizationId: ctx.organizationId },
     select: { name: true },
   });
 
@@ -27,10 +28,10 @@ export async function generateMetadata({ params }: { params: Promise<{ productId
   };
 }
 
-async function getProductAnalytics(productId: string, period: TimePeriod = "month", timezone?: string, startDateParam?: string, endDateParam?: string) {
+async function getProductAnalytics(organizationId: string, productId: string, period: TimePeriod = "month", timezone?: string, startDateParam?: string, endDateParam?: string) {
   // Verify product exists and get pricing from ProductPrice table
-  const product = await db.product.findUnique({
-    where: { id: productId },
+  const product = await db.product.findFirst({
+    where: { id: productId, organizationId },
     select: {
       id: true,
       name: true,
@@ -67,6 +68,7 @@ async function getProductAnalytics(productId: string, period: TimePeriod = "mont
     where: {
       productId: productId,
       order: {
+        organizationId,
         status: OrderStatus.DELIVERED,
         deliveredAt: {
           gte: sixMonthsAgo,
@@ -88,6 +90,7 @@ async function getProductAnalytics(productId: string, period: TimePeriod = "mont
   // Fetch all expenses for this product (6 months for chart)
   const allExpenses = await db.expense.findMany({
     where: {
+      organizationId,
       productId: productId,
       date: {
         gte: sixMonthsAgo,
@@ -251,14 +254,7 @@ export default async function ProductAnalyticsPage({
   params: Promise<{ productId: string }>;
   searchParams: Promise<{ period?: string; tz?: string; startDate?: string; endDate?: string }>;
 }) {
-  const session = await auth.api.getSession({
-    headers: await import("next/headers").then((m) => m.headers()),
-  });
-
-  if (!session?.user || session.user.role !== "ADMIN") {
-    redirect("/login");
-  }
-
+  const ctx = await requireOrgContext();
   const { productId } = await params;
   const query = await searchParams;
   const period = (query?.period || "month") as TimePeriod;
@@ -266,7 +262,7 @@ export default async function ProductAnalyticsPage({
   const startDate = query?.startDate;
   const endDate = query?.endDate;
 
-  const data = await getProductAnalytics(productId, period, timezone, startDate, endDate);
+  const data = await getProductAnalytics(ctx.organizationId, productId, period, timezone, startDate, endDate);
 
   if (!data) {
     notFound();

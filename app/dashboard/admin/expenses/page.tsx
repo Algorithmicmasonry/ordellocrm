@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import { ExpensesClient } from "./_components";
 import { Skeleton } from "@/components/ui/skeleton";
 import { db } from "@/lib/db";
+import { requireOrgContext } from "@/lib/org-context";
 import {
   getDateRange,
   getPreviousPeriodRange,
@@ -15,7 +16,7 @@ interface ExpensesPageProps {
   searchParams: Promise<{ period?: string; currency?: Currency; tz?: string; startDate?: string; endDate?: string }>;
 }
 
-async function getExpensesData(period: TimePeriod = "month", currency?: Currency, timezone?: string, startDateParam?: string, endDateParam?: string) {
+async function getExpensesData(organizationId: string, period: TimePeriod = "month", currency?: Currency, timezone?: string, startDateParam?: string, endDateParam?: string) {
   const { startDate, endDate } = (startDateParam && endDateParam)
     ? { startDate: new Date(startDateParam), endDate: new Date(endDateParam) }
     : getDateRange(period, timezone);
@@ -28,6 +29,7 @@ async function getExpensesData(period: TimePeriod = "month", currency?: Currency
     // Fetch expenses from both current and previous periods
     db.expense.findMany({
       where: {
+        organizationId,
         date: {
           gte: previousRange ? previousRange.startDate : startDate,
           lte: endDate,
@@ -49,6 +51,7 @@ async function getExpensesData(period: TimePeriod = "month", currency?: Currency
     // Fetch all products for dropdown
     db.product.findMany({
       where: {
+        organizationId,
         isDeleted: false,
       },
       select: {
@@ -62,6 +65,7 @@ async function getExpensesData(period: TimePeriod = "month", currency?: Currency
     // Fetch delivered orders for profit calculations
     db.order.findMany({
       where: {
+        organizationId,
         status: OrderStatus.DELIVERED,
         deliveredAt: {
           gte: previousRange ? previousRange.startDate : startDate,
@@ -270,13 +274,14 @@ async function getExpensesData(period: TimePeriod = "month", currency?: Currency
 export default async function ExpensesPage({
   searchParams,
 }: ExpensesPageProps) {
+  const ctx = await requireOrgContext();
   const params = await searchParams;
   const period = (params?.period || "month") as TimePeriod;
   const currency = params?.currency;
   const timezone = params?.tz;
   const startDate = params?.startDate;
   const endDate = params?.endDate;
-  const data = await getExpensesData(period, currency, timezone, startDate, endDate);
+  const data = await getExpensesData(ctx.organizationId, period, currency, timezone, startDate, endDate);
 
   return (
     <Suspense fallback={<ExpensesPageSkeleton />}>
