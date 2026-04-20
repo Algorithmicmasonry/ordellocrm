@@ -5,12 +5,14 @@ import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
 import { NotificationType } from "@prisma/client";
 import { revalidatePath } from "next/cache";
+import { requireOrgContext } from "@/lib/org-context";
 
 /**
- * Create a notification for a specific user
+ * Create a notification for a specific user within an org
  */
 export async function createNotification({
   userId,
+  organizationId,
   type,
   title,
   message,
@@ -18,6 +20,7 @@ export async function createNotification({
   orderId,
 }: {
   userId: string;
+  organizationId: string;
   type: NotificationType;
   title: string;
   message: string;
@@ -26,19 +29,10 @@ export async function createNotification({
 }) {
   try {
     const notification = await db.notification.create({
-      data: {
-        userId,
-        type,
-        title,
-        message,
-        link,
-        orderId,
-      },
+      data: { userId, organizationId, type, title, message, link, orderId },
     });
 
-    // Revalidate notification-related paths
     revalidatePath("/dashboard");
-
     return { success: true, data: notification };
   } catch (error) {
     console.error("Error creating notification:", error);
@@ -47,10 +41,11 @@ export async function createNotification({
 }
 
 /**
- * Create notifications for multiple users at once
+ * Create notifications for multiple users at once within an org
  */
 export async function createBulkNotifications({
   userIds,
+  organizationId,
   type,
   title,
   message,
@@ -58,6 +53,7 @@ export async function createBulkNotifications({
   orderId,
 }: {
   userIds: string[];
+  organizationId: string;
   type: NotificationType;
   title: string;
   message: string;
@@ -68,6 +64,7 @@ export async function createBulkNotifications({
     const notifications = await db.notification.createMany({
       data: userIds.map((userId) => ({
         userId,
+        organizationId,
         type,
         title,
         message,
@@ -77,7 +74,6 @@ export async function createBulkNotifications({
     });
 
     revalidatePath("/dashboard");
-
     return { success: true, count: notifications.count };
   } catch (error) {
     console.error("Error creating bulk notifications:", error);
@@ -86,7 +82,7 @@ export async function createBulkNotifications({
 }
 
 /**
- * Get notifications for the current user
+ * Get notifications for the current user scoped to current org
  */
 export async function getUserNotifications({
   page = 1,
@@ -98,27 +94,19 @@ export async function getUserNotifications({
   unreadOnly?: boolean;
 } = {}) {
   try {
-    const session = await auth.api.getSession({ headers: await headers() });
-    if (!session?.user) {
-      return { success: false, error: "Unauthorized" };
-    }
-
+    const ctx = await requireOrgContext();
     const skip = (page - 1) * limit;
 
     const where: any = {
-      userId: session.user.id,
+      userId: ctx.userId,
+      organizationId: ctx.organizationId,
+      ...(unreadOnly && { isRead: false }),
     };
-
-    if (unreadOnly) {
-      where.isRead = false;
-    }
 
     const [notifications, total] = await Promise.all([
       db.notification.findMany({
         where,
-        orderBy: {
-          createdAt: "desc",
-        },
+        orderBy: { createdAt: "desc" },
         take: limit,
         skip,
       }),
@@ -144,18 +132,16 @@ export async function getUserNotifications({
 }
 
 /**
- * Get unread notification count for current user
+ * Get unread notification count for current user in current org
  */
 export async function getUnreadCount() {
   try {
-    const session = await auth.api.getSession({ headers: await headers() });
-    if (!session?.user) {
-      return { success: false, error: "Unauthorized" };
-    }
+    const ctx = await requireOrgContext();
 
     const count = await db.notification.count({
       where: {
-        userId: session.user.id,
+        userId: ctx.userId,
+        organizationId: ctx.organizationId,
         isRead: false,
       },
     });
@@ -168,21 +154,17 @@ export async function getUnreadCount() {
 }
 
 /**
- * Mark a notification as read
+ * Mark a notification as read (must belong to current user + org)
  */
 export async function markAsRead(notificationId: string) {
   try {
-    const session = await auth.api.getSession({ headers: await headers() });
-    if (!session?.user) {
-      return { success: false, error: "Unauthorized" };
-    }
+    const ctx = await requireOrgContext();
 
-    // Verify notification belongs to user
     const notification = await db.notification.findUnique({
       where: { id: notificationId },
     });
 
-    if (!notification || notification.userId !== session.user.id) {
+    if (!notification || notification.userId !== ctx.userId || notification.organizationId !== ctx.organizationId) {
       return { success: false, error: "Notification not found" };
     }
 
@@ -192,7 +174,6 @@ export async function markAsRead(notificationId: string) {
     });
 
     revalidatePath("/dashboard");
-
     return { success: true };
   } catch (error) {
     console.error("Error marking notification as read:", error);
@@ -201,27 +182,18 @@ export async function markAsRead(notificationId: string) {
 }
 
 /**
- * Mark all notifications as read for current user
+ * Mark all notifications as read for current user in current org
  */
 export async function markAllAsRead() {
   try {
-    const session = await auth.api.getSession({ headers: await headers() });
-    if (!session?.user) {
-      return { success: false, error: "Unauthorized" };
-    }
+    const ctx = await requireOrgContext();
 
     await db.notification.updateMany({
-      where: {
-        userId: session.user.id,
-        isRead: false,
-      },
-      data: {
-        isRead: true,
-      },
+      where: { userId: ctx.userId, organizationId: ctx.organizationId, isRead: false },
+      data: { isRead: true },
     });
 
     revalidatePath("/dashboard");
-
     return { success: true };
   } catch (error) {
     console.error("Error marking all as read:", error);
@@ -230,30 +202,23 @@ export async function markAllAsRead() {
 }
 
 /**
- * Delete a notification
+ * Delete a notification (must belong to current user + org)
  */
 export async function deleteNotification(notificationId: string) {
   try {
-    const session = await auth.api.getSession({ headers: await headers() });
-    if (!session?.user) {
-      return { success: false, error: "Unauthorized" };
-    }
+    const ctx = await requireOrgContext();
 
-    // Verify notification belongs to user
     const notification = await db.notification.findUnique({
       where: { id: notificationId },
     });
 
-    if (!notification || notification.userId !== session.user.id) {
+    if (!notification || notification.userId !== ctx.userId || notification.organizationId !== ctx.organizationId) {
       return { success: false, error: "Notification not found" };
     }
 
-    await db.notification.delete({
-      where: { id: notificationId },
-    });
+    await db.notification.delete({ where: { id: notificationId } });
 
     revalidatePath("/dashboard");
-
     return { success: true };
   } catch (error) {
     console.error("Error deleting notification:", error);
@@ -262,24 +227,17 @@ export async function deleteNotification(notificationId: string) {
 }
 
 /**
- * Delete all read notifications for current user
+ * Delete all read notifications for current user in current org
  */
 export async function deleteAllRead() {
   try {
-    const session = await auth.api.getSession({ headers: await headers() });
-    if (!session?.user) {
-      return { success: false, error: "Unauthorized" };
-    }
+    const ctx = await requireOrgContext();
 
     const result = await db.notification.deleteMany({
-      where: {
-        userId: session.user.id,
-        isRead: true,
-      },
+      where: { userId: ctx.userId, organizationId: ctx.organizationId, isRead: true },
     });
 
     revalidatePath("/dashboard");
-
     return { success: true, count: result.count };
   } catch (error) {
     console.error("Error deleting read notifications:", error);
@@ -288,45 +246,28 @@ export async function deleteAllRead() {
 }
 
 /**
- * Get recent notifications for dropdown (last 5 unread + 5 recent)
+ * Get recent notifications for dropdown (scoped to user + org)
  */
 export async function getRecentNotifications() {
   try {
-    const session = await auth.api.getSession({ headers: await headers() });
-    if (!session?.user) {
-      return { success: false, error: "Unauthorized" };
-    }
+    const ctx = await requireOrgContext();
 
     const [unread, recent] = await Promise.all([
-      // Get latest unread notifications
       db.notification.findMany({
-        where: {
-          userId: session.user.id,
-          isRead: false,
-        },
-        orderBy: {
-          createdAt: "desc",
-        },
+        where: { userId: ctx.userId, organizationId: ctx.organizationId, isRead: false },
+        orderBy: { createdAt: "desc" },
         take: 5,
       }),
-      // Get latest notifications overall
       db.notification.findMany({
-        where: {
-          userId: session.user.id,
-        },
-        orderBy: {
-          createdAt: "desc",
-        },
+        where: { userId: ctx.userId, organizationId: ctx.organizationId },
+        orderBy: { createdAt: "desc" },
         take: 10,
       }),
     ]);
 
-    // Combine and deduplicate
     const notificationMap = new Map();
-    [...unread, ...recent].forEach((notif) => {
-      if (!notificationMap.has(notif.id)) {
-        notificationMap.set(notif.id, notif);
-      }
+    [...unread, ...recent].forEach((n) => {
+      if (!notificationMap.has(n.id)) notificationMap.set(n.id, n);
     });
 
     const notifications = Array.from(notificationMap.values())
