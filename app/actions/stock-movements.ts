@@ -1,10 +1,12 @@
 "use server"
 
 import { db } from "@/lib/db"
-import { auth } from "@/lib/auth"
-import { headers } from "next/headers"
+import { requireOrgContext } from "@/lib/org-context"
 import type { StockMovementType } from "@prisma/client"
 
+/**
+ * Get paginated stock movements for the current org (Admin + Inventory Manager)
+ */
 export async function getStockMovements(params: {
   page?: number
   pageSize?: number
@@ -14,13 +16,9 @@ export async function getStockMovements(params: {
   endDate?: string
 }) {
   try {
-    const session = await auth.api.getSession({ headers: await headers() })
-    if (!session?.user) {
-      return { success: false, error: "Unauthorized" }
-    }
+    const ctx = await requireOrgContext()
 
-    const user = await db.user.findUnique({ where: { id: session.user.id } })
-    if (user?.role !== "ADMIN" && user?.role !== "INVENTORY_MANAGER") {
+    if (ctx.role !== "ADMIN" && ctx.role !== "OWNER" && ctx.role !== "INVENTORY_MANAGER") {
       return { success: false, error: "Insufficient permissions" }
     }
 
@@ -28,32 +26,22 @@ export async function getStockMovements(params: {
     const pageSize = params.pageSize ?? 50
     const skip = (page - 1) * pageSize
 
-    const where: any = {}
+    const where: any = {
+      organizationId: ctx.organizationId,
+    }
 
-    if (params.productId) {
-      where.productId = params.productId
-    }
-    if (params.type) {
-      where.type = params.type
-    }
+    if (params.productId) where.productId = params.productId
+    if (params.type) where.type = params.type
     if (params.startDate || params.endDate) {
       where.createdAt = {}
-      if (params.startDate) {
-        where.createdAt.gte = new Date(params.startDate)
-      }
-      if (params.endDate) {
-        where.createdAt.lte = new Date(params.endDate + "T23:59:59.999Z")
-      }
+      if (params.startDate) where.createdAt.gte = new Date(params.startDate)
+      if (params.endDate) where.createdAt.lte = new Date(params.endDate + "T23:59:59.999Z")
     }
 
     const [movements, total] = await Promise.all([
       db.stockMovement.findMany({
         where,
-        include: {
-          product: {
-            select: { id: true, name: true },
-          },
-        },
+        include: { product: { select: { id: true, name: true } } },
         orderBy: { createdAt: "desc" },
         skip,
         take: pageSize,
@@ -61,20 +49,18 @@ export async function getStockMovements(params: {
       db.stockMovement.count({ where }),
     ])
 
-    // Fetch user and agent names in bulk for display
+    // Fetch user and agent names for display
     const userIds = [...new Set(movements.map((m) => m.userId).filter(Boolean))] as string[]
     const agentIds = [...new Set(movements.map((m) => m.agentId).filter(Boolean))] as string[]
 
     const [users, agents] = await Promise.all([
       userIds.length > 0
-        ? db.user.findMany({
-            where: { id: { in: userIds } },
-            select: { id: true, name: true },
-          })
+        ? db.user.findMany({ where: { id: { in: userIds } }, select: { id: true, name: true } })
         : [],
       agentIds.length > 0
+        // Only fetch agents from this org
         ? db.agent.findMany({
-            where: { id: { in: agentIds } },
+            where: { id: { in: agentIds }, organizationId: ctx.organizationId },
             select: { id: true, name: true },
           })
         : [],
@@ -105,15 +91,15 @@ export async function getStockMovements(params: {
   }
 }
 
+/**
+ * Get products available for filter dropdown (scoped to org)
+ */
 export async function getProductsForFilter() {
   try {
-    const session = await auth.api.getSession({ headers: await headers() })
-    if (!session?.user) {
-      return { success: false, error: "Unauthorized" }
-    }
+    const ctx = await requireOrgContext()
 
     const products = await db.product.findMany({
-      where: { isDeleted: false },
+      where: { organizationId: ctx.organizationId, isDeleted: false },
       select: { id: true, name: true },
       orderBy: { name: "asc" },
     })

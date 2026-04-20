@@ -1,11 +1,10 @@
 "use server";
 
 import { db } from "@/lib/db";
-import { auth } from "@/lib/auth";
-import { headers } from "next/headers";
 import { OrderStatus } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { logStockMovement } from "@/lib/stock-movements";
+import { requireOrgContext } from "@/lib/org-context";
 
 export type StockCorrection = {
   productId: string;
@@ -18,76 +17,51 @@ export type StockCorrection = {
 };
 
 /**
- * Preview stock corrections without applying them.
+ * Preview stock corrections without applying them (Admin only, org-scoped).
  *
- * The bug: when an agent-fulfilled order was delivered, the old code
- * decremented BOTH Product.currentStock AND AgentStock.quantity.
- * But currentStock was already decremented when stock was distributed
- * to the agent — so it was double-counted.
- *
- * Fix: for each product, count the total quantity of delivered order items
- * where the order had an agent assigned. That total was incorrectly
- * deducted from currentStock and needs to be added back.
+ * Finds products where currentStock went negative due to the double-deduction
+ * bug (agent orders incorrectly deducting from warehouse stock).
  */
 export async function previewStockCorrections() {
   try {
-    const session = await auth.api.getSession({ headers: await headers() });
-    if (!session?.user) {
-      return { success: false, error: "Unauthorized" };
-    }
+    const ctx = await requireOrgContext();
 
-    const user = await db.user.findUnique({ where: { id: session.user.id } });
-    if (user?.role !== "ADMIN") {
+    if (ctx.role !== "ADMIN" && ctx.role !== "OWNER") {
       return { success: false, error: "Only admins can run stock corrections" };
     }
 
-    // Find all delivered orders that had an agent assigned
+    // Find all delivered agent orders in this org
     const deliveredAgentOrders = await db.order.findMany({
       where: {
+        organizationId: ctx.organizationId,
         status: OrderStatus.DELIVERED,
         agentId: { not: null },
       },
       include: {
-        items: {
-          select: {
-            productId: true,
-            quantity: true,
-          },
-        },
-        agent: {
-          select: { name: true },
-        },
+        items: { select: { productId: true, quantity: true } },
+        agent: { select: { name: true } },
       },
     });
 
-    // Sum up incorrectly deducted quantities per product
-    const productAdjustments = new Map<
-      string,
-      { quantity: number; orderCount: number }
-    >();
+    // Sum incorrectly deducted quantities per product
+    const productAdjustments = new Map<string, { quantity: number; orderCount: number }>();
 
     for (const order of deliveredAgentOrders) {
       for (const item of order.items) {
-        const existing = productAdjustments.get(item.productId) || {
-          quantity: 0,
-          orderCount: 0,
-        };
+        const existing = productAdjustments.get(item.productId) || { quantity: 0, orderCount: 0 };
         existing.quantity += item.quantity;
         existing.orderCount += 1;
         productAdjustments.set(item.productId, existing);
       }
     }
 
-    // Only include products that actually need correction (negative currentStock)
+    // Only fetch products from this org that need correction
     const products = await db.product.findMany({
       where: {
+        organizationId: ctx.organizationId,
         id: { in: Array.from(productAdjustments.keys()) },
       },
-      select: {
-        id: true,
-        name: true,
-        currentStock: true,
-      },
+      select: { id: true, name: true, currentStock: true },
     });
 
     const corrections: StockCorrection[] = [];
@@ -98,7 +72,6 @@ export async function previewStockCorrections() {
 
       const correctedStock = product.currentStock + adjustment.quantity;
 
-      // Only include if stock is actually negative (needs correction)
       if (product.currentStock < 0) {
         corrections.push({
           productId: product.id,
@@ -127,61 +100,45 @@ export async function previewStockCorrections() {
 }
 
 /**
- * Apply stock corrections — adds back the incorrectly deducted quantities
- * to Product.currentStock for affected products.
+ * Apply stock corrections — adds back incorrectly deducted quantities (Admin only, org-scoped).
  */
 export async function applyStockCorrections() {
   try {
-    const session = await auth.api.getSession({ headers: await headers() });
-    if (!session?.user) {
-      return { success: false, error: "Unauthorized" };
-    }
+    const ctx = await requireOrgContext();
 
-    const user = await db.user.findUnique({ where: { id: session.user.id } });
-    if (user?.role !== "ADMIN") {
+    if (ctx.role !== "ADMIN" && ctx.role !== "OWNER") {
       return { success: false, error: "Only admins can run stock corrections" };
     }
 
     // Recalculate (same logic as preview)
     const deliveredAgentOrders = await db.order.findMany({
       where: {
+        organizationId: ctx.organizationId,
         status: OrderStatus.DELIVERED,
         agentId: { not: null },
       },
-      include: {
-        items: {
-          select: {
-            productId: true,
-            quantity: true,
-          },
-        },
-      },
+      include: { items: { select: { productId: true, quantity: true } } },
     });
 
     const productAdjustments = new Map<string, number>();
 
     for (const order of deliveredAgentOrders) {
       for (const item of order.items) {
-        const existing = productAdjustments.get(item.productId) || 0;
-        productAdjustments.set(item.productId, existing + item.quantity);
+        productAdjustments.set(item.productId, (productAdjustments.get(item.productId) || 0) + item.quantity);
       }
     }
 
-    // Only correct products with negative stock
+    // Only correct products with negative stock in this org
     const products = await db.product.findMany({
       where: {
+        organizationId: ctx.organizationId,
         id: { in: Array.from(productAdjustments.keys()) },
         currentStock: { lt: 0 },
       },
-      select: {
-        id: true,
-        name: true,
-        currentStock: true,
-      },
+      select: { id: true, name: true, currentStock: true },
     });
 
-    const results: { productName: string; before: number; after: number }[] =
-      [];
+    const results: { productName: string; before: number; after: number }[] = [];
 
     for (const product of products) {
       const adjustment = productAdjustments.get(product.id) || 0;
@@ -189,25 +146,20 @@ export async function applyStockCorrections() {
 
       await db.product.update({
         where: { id: product.id },
-        data: {
-          currentStock: correctedStock,
-        },
+        data: { currentStock: correctedStock },
       });
 
       await logStockMovement({
         productId: product.id,
+        organizationId: ctx.organizationId,
         type: "CORRECTION",
         quantity: adjustment,
         balanceAfter: correctedStock,
-        userId: session.user.id,
+        userId: ctx.userId,
         note: `Auto-correction: reversed double-deduction from ${adjustment} delivered agent order items`,
       });
 
-      results.push({
-        productName: product.name,
-        before: product.currentStock,
-        after: correctedStock,
-      });
+      results.push({ productName: product.name, before: product.currentStock, after: correctedStock });
     }
 
     revalidatePath("/dashboard/admin/inventory");
@@ -216,10 +168,7 @@ export async function applyStockCorrections() {
 
     return {
       success: true,
-      data: {
-        correctedProducts: results.length,
-        results,
-      },
+      data: { correctedProducts: results.length, results },
     };
   } catch (error) {
     console.error("Error applying stock corrections:", error);

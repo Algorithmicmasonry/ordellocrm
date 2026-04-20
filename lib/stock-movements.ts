@@ -5,6 +5,7 @@ type PrismaTransactionClient = Parameters<Parameters<typeof db.$transaction>[0]>
 
 interface LogStockMovementParams {
   productId: string
+  organizationId: string
   type: StockMovementType
   quantity: number       // positive = stock in, negative = stock out
   balanceAfter: number   // product.currentStock after this movement
@@ -23,6 +24,7 @@ interface LogStockMovementParams {
  */
 export async function logStockMovement({
   productId,
+  organizationId,
   type,
   quantity,
   balanceAfter,
@@ -37,6 +39,7 @@ export async function logStockMovement({
   await client.stockMovement.create({
     data: {
       productId,
+      organizationId,
       type,
       quantity,
       balanceAfter,
