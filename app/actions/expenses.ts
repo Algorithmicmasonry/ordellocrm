@@ -2,12 +2,22 @@
 
 import { db } from "@/lib/db"
 import { revalidatePath } from "next/cache"
+import { requireOrgContext } from "@/lib/org-context"
 
 /**
  * Get batches for a product (for batch selector in expense modal)
  */
 export async function getProductBatches(productId: string) {
   try {
+    const ctx = await requireOrgContext()
+
+    // Verify product belongs to this org
+    const product = await db.product.findUnique({
+      where: { id: productId, organizationId: ctx.organizationId },
+      select: { id: true },
+    })
+    if (!product) return { success: false, batches: [] }
+
     const batches = await db.productBatch.findMany({
       where: { productId },
       orderBy: { date: "desc" },
@@ -21,7 +31,7 @@ export async function getProductBatches(productId: string) {
 }
 
 /**
- * Create a new product batch
+ * Create a new product batch (Admin + Inventory Manager)
  */
 export async function createProductBatch(data: {
   productId: string
@@ -30,6 +40,19 @@ export async function createProductBatch(data: {
   date?: Date
 }) {
   try {
+    const ctx = await requireOrgContext()
+
+    if (ctx.role !== "ADMIN" && ctx.role !== "OWNER" && ctx.role !== "INVENTORY_MANAGER") {
+      return { success: false, error: "Insufficient permissions" }
+    }
+
+    // Verify product belongs to this org
+    const product = await db.product.findUnique({
+      where: { id: data.productId, organizationId: ctx.organizationId },
+      select: { id: true },
+    })
+    if (!product) return { success: false, error: "Product not found" }
+
     const batch = await db.productBatch.create({
       data: {
         productId: data.productId,
@@ -59,17 +82,32 @@ export async function createExpense(data: {
   date?: Date
 }) {
   try {
+    const ctx = await requireOrgContext()
+
+    if (ctx.role !== "ADMIN" && ctx.role !== "OWNER") {
+      return { success: false, error: "Admin access required" }
+    }
+
+    // If product specified, verify it belongs to this org
+    if (data.productId) {
+      const product = await db.product.findUnique({
+        where: { id: data.productId, organizationId: ctx.organizationId },
+        select: { id: true },
+      })
+      if (!product) return { success: false, error: "Product not found" }
+    }
+
     const expense = await db.expense.create({
       data: {
         ...data,
+        organizationId: ctx.organizationId,
         currency: data.currency || "NGN",
         date: data.date || new Date(),
       },
     })
 
-    revalidatePath("/admin/expenses")
-    revalidatePath("/admin")
-
+    revalidatePath("/dashboard/admin/expenses")
+    revalidatePath("/dashboard/admin")
     return { success: true, expense }
   } catch (error) {
     console.error("Error creating expense:", error)
@@ -93,14 +131,26 @@ export async function updateExpense(
   }
 ) {
   try {
+    const ctx = await requireOrgContext()
+
+    if (ctx.role !== "ADMIN" && ctx.role !== "OWNER") {
+      return { success: false, error: "Admin access required" }
+    }
+
+    // Verify expense belongs to this org
+    const existing = await db.expense.findUnique({
+      where: { id: expenseId, organizationId: ctx.organizationId },
+      select: { id: true },
+    })
+    if (!existing) return { success: false, error: "Expense not found" }
+
     const expense = await db.expense.update({
       where: { id: expenseId },
       data,
     })
 
-    revalidatePath("/admin/expenses")
-    revalidatePath("/admin")
-
+    revalidatePath("/dashboard/admin/expenses")
+    revalidatePath("/dashboard/admin")
     return { success: true, expense }
   } catch (error) {
     console.error("Error updating expense:", error)
@@ -113,13 +163,23 @@ export async function updateExpense(
  */
 export async function deleteExpense(expenseId: string) {
   try {
-    await db.expense.delete({
-      where: { id: expenseId },
+    const ctx = await requireOrgContext()
+
+    if (ctx.role !== "ADMIN" && ctx.role !== "OWNER") {
+      return { success: false, error: "Admin access required" }
+    }
+
+    // Verify expense belongs to this org before deleting
+    const existing = await db.expense.findUnique({
+      where: { id: expenseId, organizationId: ctx.organizationId },
+      select: { id: true },
     })
+    if (!existing) return { success: false, error: "Expense not found" }
 
-    revalidatePath("/admin/expenses")
-    revalidatePath("/admin")
+    await db.expense.delete({ where: { id: expenseId } })
 
+    revalidatePath("/dashboard/admin/expenses")
+    revalidatePath("/dashboard/admin")
     return { success: true }
   } catch (error) {
     console.error("Error deleting expense:", error)
@@ -128,17 +188,16 @@ export async function deleteExpense(expenseId: string) {
 }
 
 /**
- * Get all expenses
+ * Get all expenses (scoped to org)
  */
 export async function getAllExpenses() {
   try {
+    const ctx = await requireOrgContext()
+
     const expenses = await db.expense.findMany({
-      include: {
-        product: true,
-      },
-      orderBy: {
-        date: "desc",
-      },
+      where: { organizationId: ctx.organizationId },
+      include: { product: true },
+      orderBy: { date: "desc" },
     })
 
     return { success: true, expenses }
@@ -149,27 +208,22 @@ export async function getAllExpenses() {
 }
 
 /**
- * Get expenses by date range
+ * Get expenses by date range (scoped to org)
  */
 export async function getExpensesByDateRange(startDate: Date, endDate: Date) {
   try {
+    const ctx = await requireOrgContext()
+
     const expenses = await db.expense.findMany({
       where: {
-        date: {
-          gte: startDate,
-          lte: endDate,
-        },
+        organizationId: ctx.organizationId,
+        date: { gte: startDate, lte: endDate },
       },
-      include: {
-        product: true,
-      },
-      orderBy: {
-        date: "desc",
-      },
+      include: { product: true },
+      orderBy: { date: "desc" },
     })
 
     const total = expenses.reduce((sum, expense) => sum + expense.amount, 0)
-
     return { success: true, expenses, total }
   } catch (error) {
     console.error("Error fetching expenses:", error)

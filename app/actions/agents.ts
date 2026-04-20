@@ -1,10 +1,9 @@
 "use server"
 
 import { db } from "@/lib/db"
-import { auth } from "@/lib/auth"
-import { headers } from "next/headers"
 import { revalidatePath } from "next/cache"
 import { logStockMovement } from "@/lib/stock-movements"
+import { requireOrgContext } from "@/lib/org-context"
 
 /**
  * Create a new agent (Admin only)
@@ -16,23 +15,17 @@ export async function createAgent(data: {
   address?: string
 }) {
   try {
-    // Authorization: ADMIN only
-    const session = await auth.api.getSession({ headers: await headers() })
-    if (!session?.user) {
-      return { success: false, error: "Unauthorized" }
-    }
+    const ctx = await requireOrgContext()
 
-    const user = await db.user.findUnique({ where: { id: session.user.id } })
-    if (user?.role !== "ADMIN") {
+    if (ctx.role !== "ADMIN" && ctx.role !== "OWNER") {
       return { success: false, error: "Admin access required" }
     }
 
     const agent = await db.agent.create({
-      data,
+      data: { ...data, organizationId: ctx.organizationId },
     })
 
-    revalidatePath("/admin/agents")
-
+    revalidatePath("/dashboard/admin/agents")
     return { success: true, agent }
   } catch (error) {
     console.error("Error creating agent:", error)
@@ -54,24 +47,18 @@ export async function updateAgent(
   }
 ) {
   try {
-    // Authorization: ADMIN only
-    const session = await auth.api.getSession({ headers: await headers() })
-    if (!session?.user) {
-      return { success: false, error: "Unauthorized" }
-    }
+    const ctx = await requireOrgContext()
 
-    const user = await db.user.findUnique({ where: { id: session.user.id } })
-    if (user?.role !== "ADMIN") {
+    if (ctx.role !== "ADMIN" && ctx.role !== "OWNER") {
       return { success: false, error: "Admin access required" }
     }
 
     const agent = await db.agent.update({
-      where: { id: agentId },
+      where: { id: agentId, organizationId: ctx.organizationId },
       data,
     })
 
-    revalidatePath("/admin/agents")
-
+    revalidatePath("/dashboard/admin/agents")
     return { success: true, agent }
   } catch (error) {
     console.error("Error updating agent:", error)
@@ -88,96 +75,71 @@ export async function assignStockToAgent(
   quantity: number
 ) {
   try {
-    // Authorization: ADMIN and INVENTORY_MANAGER only
-    const session = await auth.api.getSession({ headers: await headers() })
-    if (!session?.user) {
-      return { success: false, error: "Unauthorized" }
-    }
+    const ctx = await requireOrgContext()
 
-    const user = await db.user.findUnique({ where: { id: session.user.id } })
-    if (user?.role !== "ADMIN" && user?.role !== "INVENTORY_MANAGER") {
+    if (ctx.role !== "ADMIN" && ctx.role !== "OWNER" && ctx.role !== "INVENTORY_MANAGER") {
       return { success: false, error: "Insufficient permissions" }
     }
 
-    // Check product has enough warehouse stock before distributing
-    const product = await db.product.findUnique({
-      where: { id: productId },
-      select: { currentStock: true, name: true },
-    })
+    // Verify agent and product both belong to this org
+    const [agent, product] = await Promise.all([
+      db.agent.findUnique({
+        where: { id: agentId, organizationId: ctx.organizationId },
+        select: { id: true },
+      }),
+      db.product.findUnique({
+        where: { id: productId, organizationId: ctx.organizationId },
+        select: { currentStock: true, name: true },
+      }),
+    ])
 
-    if (!product) {
-      return { success: false, error: "Product not found" }
-    }
+    if (!agent) return { success: false, error: "Agent not found" }
+    if (!product) return { success: false, error: "Product not found" }
 
     if (product.currentStock < quantity) {
       return {
         success: false,
         error: product.currentStock <= 0
-          ? `${product.name} is out of stock in the warehouse (current stock: ${product.currentStock}). Add more stock before distributing to agents.`
+          ? `${product.name} is out of stock in the warehouse (current stock: ${product.currentStock}).`
           : `Insufficient warehouse stock for ${product.name}. Available: ${product.currentStock}, requested: ${quantity}.`,
       }
     }
 
-    // Check if agent stock record exists
     const existingStock = await db.agentStock.findUnique({
-      where: {
-        agentId_productId: {
-          agentId,
-          productId,
-        },
-      },
+      where: { agentId_productId: { agentId, productId } },
     })
 
     let agentStock
 
     if (existingStock) {
       agentStock = await db.agentStock.update({
-        where: {
-          agentId_productId: {
-            agentId,
-            productId,
-          },
-        },
-        data: {
-          quantity: {
-            increment: quantity,
-          },
-        },
+        where: { agentId_productId: { agentId, productId } },
+        data: { quantity: { increment: quantity } },
       })
     } else {
       agentStock = await db.agentStock.create({
-        data: {
-          agentId,
-          productId,
-          quantity,
-        },
+        data: { agentId, productId, quantity },
       })
     }
 
-    // Deduct from global product stock
     const updatedProduct = await db.product.update({
       where: { id: productId },
-      data: {
-        currentStock: {
-          decrement: quantity,
-        },
-      },
+      data: { currentStock: { decrement: quantity } },
     })
 
     await logStockMovement({
       productId,
+      organizationId: ctx.organizationId,
       type: "DISTRIBUTED_TO_AGENT",
       quantity: -quantity,
       balanceAfter: updatedProduct.currentStock,
       agentId,
-      userId: session.user.id,
+      userId: ctx.userId,
     })
 
-    revalidatePath("/admin/agents")
+    revalidatePath("/dashboard/admin/agents")
     revalidatePath("/dashboard/admin/inventory")
     revalidatePath("/dashboard/inventory")
-    revalidatePath("/dashboard/inventory/agents")
-
     return { success: true, agentStock }
   } catch (error) {
     console.error("Error assigning stock to agent:", error)
@@ -195,42 +157,30 @@ export async function updateAgentStockIssues(
   missing?: number
 ) {
   try {
-    // Authorization: ADMIN and INVENTORY_MANAGER only
-    const session = await auth.api.getSession({ headers: await headers() })
-    if (!session?.user) {
-      return { success: false, error: "Unauthorized" }
-    }
+    const ctx = await requireOrgContext()
 
-    const user = await db.user.findUnique({ where: { id: session.user.id } })
-    if (user?.role !== "ADMIN" && user?.role !== "INVENTORY_MANAGER") {
+    if (ctx.role !== "ADMIN" && ctx.role !== "OWNER" && ctx.role !== "INVENTORY_MANAGER") {
       return { success: false, error: "Insufficient permissions" }
     }
 
+    // Verify agent belongs to this org
+    const agent = await db.agent.findUnique({
+      where: { id: agentId, organizationId: ctx.organizationId },
+      select: { id: true },
+    })
+    if (!agent) return { success: false, error: "Agent not found" }
+
     const updateData: any = {}
-
-    if (defective !== undefined) {
-      updateData.defective = defective
-    }
-
-    if (missing !== undefined) {
-      updateData.missing = missing
-    }
+    if (defective !== undefined) updateData.defective = defective
+    if (missing !== undefined) updateData.missing = missing
 
     const agentStock = await db.agentStock.update({
-      where: {
-        agentId_productId: {
-          agentId,
-          productId,
-        },
-      },
+      where: { agentId_productId: { agentId, productId } },
       data: updateData,
     })
 
-    revalidatePath("/admin/agents")
+    revalidatePath("/dashboard/admin/agents")
     revalidatePath("/dashboard/admin/inventory")
-    revalidatePath("/dashboard/inventory")
-    revalidatePath("/dashboard/inventory/agents")
-
     return { success: true, agentStock }
   } catch (error) {
     console.error("Error updating agent stock issues:", error)
@@ -239,21 +189,18 @@ export async function updateAgentStockIssues(
 }
 
 /**
- * Get all agents
+ * Get all agents (scoped to org)
  */
 export async function getAllAgents() {
   try {
+    const ctx = await requireOrgContext()
+
     const agents = await db.agent.findMany({
+      where: { organizationId: ctx.organizationId },
       include: {
-        stock: {
-          include: {
-            product: true,
-          },
-        },
+        stock: { include: { product: true } },
       },
-      orderBy: {
-        createdAt: "desc",
-      },
+      orderBy: { createdAt: "desc" },
     })
 
     return { success: true, agents }
@@ -264,17 +211,15 @@ export async function getAllAgents() {
 }
 
 /**
- * Get active agents
+ * Get active agents (scoped to org)
  */
 export async function getActiveAgents() {
   try {
+    const ctx = await requireOrgContext()
+
     const agents = await db.agent.findMany({
-      where: {
-        isActive: true,
-      },
-      orderBy: {
-        name: "asc",
-      },
+      where: { organizationId: ctx.organizationId, isActive: true },
+      orderBy: { name: "asc" },
     })
 
     return { success: true, agents }
@@ -286,25 +231,25 @@ export async function getActiveAgents() {
 
 /**
  * Delete agent (Admin only)
- * Validates that agent has no active orders or stock holdings
  */
 export async function deleteAgent(agentId: string) {
   try {
-    // Authorization: ADMIN only
-    const session = await auth.api.getSession({ headers: await headers() })
-    if (!session?.user) {
-      return { success: false, error: "Unauthorized" }
-    }
+    const ctx = await requireOrgContext()
 
-    const user = await db.user.findUnique({ where: { id: session.user.id } })
-    if (user?.role !== "ADMIN") {
+    if (ctx.role !== "ADMIN" && ctx.role !== "OWNER") {
       return { success: false, error: "Admin access required" }
     }
 
-    // 1. Check for active orders
+    const agent = await db.agent.findUnique({
+      where: { id: agentId, organizationId: ctx.organizationId },
+      select: { id: true },
+    })
+    if (!agent) return { success: false, error: "Agent not found" }
+
     const activeOrders = await db.order.count({
       where: {
         agentId,
+        organizationId: ctx.organizationId,
         status: { in: ["CONFIRMED", "DISPATCHED"] },
       },
     })
@@ -316,7 +261,6 @@ export async function deleteAgent(agentId: string) {
       }
     }
 
-    // 2. Check for stock holdings
     const stockHoldings = await db.agentStock.count({
       where: { agentId, quantity: { gt: 0 } },
     })
@@ -324,16 +268,13 @@ export async function deleteAgent(agentId: string) {
     if (stockHoldings > 0) {
       return {
         success: false,
-        error:
-          "Agent has stock holdings. Please reconcile stock before deletion.",
+        error: "Agent has stock holdings. Please reconcile stock before deletion.",
       }
     }
 
-    // 3. Delete agent
     await db.agent.delete({ where: { id: agentId } })
 
     revalidatePath("/dashboard/admin/agents")
-
     return { success: true, message: "Agent deleted successfully" }
   } catch (error: any) {
     console.error("Error deleting agent:", error)
@@ -342,7 +283,7 @@ export async function deleteAgent(agentId: string) {
 }
 
 /**
- * Reconcile agent stock (return, defective, missing tracking) (Admin and Inventory Manager)
+ * Reconcile agent stock (Admin and Inventory Manager)
  */
 export async function reconcileAgentStock(data: {
   agentId: string
@@ -353,32 +294,26 @@ export async function reconcileAgentStock(data: {
   notes?: string
 }) {
   try {
-    // Authorization: ADMIN and INVENTORY_MANAGER only
-    const session = await auth.api.getSession({ headers: await headers() })
-    if (!session?.user) {
-      return { success: false, error: "Unauthorized" }
-    }
+    const ctx = await requireOrgContext()
 
-    const user = await db.user.findUnique({ where: { id: session.user.id } })
-    if (user?.role !== "ADMIN" && user?.role !== "INVENTORY_MANAGER") {
+    if (ctx.role !== "ADMIN" && ctx.role !== "OWNER" && ctx.role !== "INVENTORY_MANAGER") {
       return { success: false, error: "Insufficient permissions" }
     }
 
+    // Verify agent belongs to this org
+    const agent = await db.agent.findUnique({
+      where: { id: data.agentId, organizationId: ctx.organizationId },
+      select: { id: true },
+    })
+    if (!agent) return { success: false, error: "Agent not found" }
+
     return await db.$transaction(async (tx) => {
       const agentStock = await tx.agentStock.findUnique({
-        where: {
-          agentId_productId: {
-            agentId: data.agentId,
-            productId: data.productId,
-          },
-        },
+        where: { agentId_productId: { agentId: data.agentId, productId: data.productId } },
       })
 
-      if (!agentStock) {
-        throw new Error("Stock record not found")
-      }
+      if (!agentStock) throw new Error("Stock record not found")
 
-      // Validate quantities
       const totalReconciled =
         (data.returnedQuantity || 0) + (data.defective || 0) + (data.missing || 0)
 
@@ -386,40 +321,31 @@ export async function reconcileAgentStock(data: {
         throw new Error("Reconciled quantities exceed current stock")
       }
 
-      // Update agent stock
       await tx.agentStock.update({
-        where: {
-          agentId_productId: {
-            agentId: data.agentId,
-            productId: data.productId,
-          },
-        },
+        where: { agentId_productId: { agentId: data.agentId, productId: data.productId } },
         data: {
-          quantity:
-            data.returnedQuantity !== undefined
-              ? { decrement: data.returnedQuantity }
-              : undefined,
+          quantity: data.returnedQuantity !== undefined
+            ? { decrement: data.returnedQuantity }
+            : undefined,
           defective: data.defective ?? agentStock.defective,
           missing: data.missing ?? agentStock.missing,
         },
       })
 
-      // Return stock to warehouse
       if (data.returnedQuantity && data.returnedQuantity > 0) {
         const updatedProduct = await tx.product.update({
           where: { id: data.productId },
-          data: {
-            currentStock: { increment: data.returnedQuantity },
-          },
+          data: { currentStock: { increment: data.returnedQuantity } },
         })
 
         await logStockMovement({
           productId: data.productId,
+          organizationId: ctx.organizationId,
           type: "RETURNED_FROM_AGENT",
           quantity: data.returnedQuantity,
           balanceAfter: updatedProduct.currentStock,
           agentId: data.agentId,
-          userId: session.user.id,
+          userId: ctx.userId,
           note: data.notes,
           tx,
         })
@@ -427,9 +353,6 @@ export async function reconcileAgentStock(data: {
 
       revalidatePath("/dashboard/admin/agents")
       revalidatePath("/dashboard/admin/inventory")
-      revalidatePath("/dashboard/inventory")
-      revalidatePath("/dashboard/inventory/agents")
-
       return { success: true, message: "Stock reconciled successfully" }
     })
   } catch (error: any) {
@@ -448,25 +371,27 @@ export async function createSettlement(data: {
   cashReturned: number
   adjustments: number
   notes?: string
-  settledBy: string
 }) {
   try {
-    // Authorization: ADMIN only
-    const session = await auth.api.getSession({ headers: await headers() })
-    if (!session?.user) {
-      return { success: false, error: "Unauthorized" }
-    }
+    const ctx = await requireOrgContext()
 
-    const user = await db.user.findUnique({ where: { id: session.user.id } })
-    if (user?.role !== "ADMIN") {
+    if (ctx.role !== "ADMIN" && ctx.role !== "OWNER") {
       return { success: false, error: "Admin access required" }
     }
+
+    // Verify agent belongs to this org
+    const agent = await db.agent.findUnique({
+      where: { id: data.agentId, organizationId: ctx.organizationId },
+      select: { id: true },
+    })
+    if (!agent) return { success: false, error: "Agent not found" }
 
     const balanceDue =
       data.stockValue + data.cashCollected - data.cashReturned + data.adjustments
 
     const settlement = await db.settlement.create({
       data: {
+        organizationId: ctx.organizationId,
         agentId: data.agentId,
         stockValue: data.stockValue,
         cashCollected: data.cashCollected,
@@ -474,12 +399,11 @@ export async function createSettlement(data: {
         adjustments: data.adjustments,
         balanceDue,
         notes: data.notes,
-        settledBy: data.settledBy,
+        settledBy: ctx.userId,
       },
     })
 
     revalidatePath("/dashboard/admin/agents")
-
     return { success: true, settlement }
   } catch (error: any) {
     console.error("Error creating settlement:", error)
