@@ -2,15 +2,17 @@ import { Suspense } from "react";
 import { AdminInventoryClient, AgentInventoryBreakdown } from "./_components";
 import { Skeleton } from "@/components/ui/skeleton";
 import { db } from "@/lib/db";
+import { requireOrgContext } from "@/lib/org-context";
 import type { Currency } from "@prisma/client";
 import { OrderStatus } from "@prisma/client";
 
-async function getInventoryData(currency?: Currency) {
+async function getInventoryData(organizationId: string, currency?: Currency) {
   // Fetch products with agent stock
   // When using `include`, Prisma automatically includes all base model fields
   // So reorderPoint, currentStock, and all other Product fields will be available
   const products = await db.product.findMany({
     where: {
+      organizationId,
       isDeleted: false,
       isActive: true,
     },
@@ -41,6 +43,7 @@ async function getInventoryData(currency?: Currency) {
   // Fetch agents with their stock
   const agents = await db.agent.findMany({
     where: {
+      organizationId,
       isActive: true,
     },
     include: {
@@ -129,7 +132,7 @@ async function getInventoryData(currency?: Currency) {
   const soldRows = await db.orderItem.groupBy({
     by: ["productId"],
     where: {
-      order: { status: OrderStatus.DELIVERED },
+      order: { organizationId, status: OrderStatus.DELIVERED },
     },
     _sum: { quantity: true },
   });
@@ -160,9 +163,10 @@ interface InventoryPageProps {
 export default async function InventoryManagementPage({
   searchParams,
 }: InventoryPageProps) {
+  const ctx = await requireOrgContext();
   const params = await searchParams;
   const currency = params?.currency;
-  const data = await getInventoryData(currency);
+  const data = await getInventoryData(ctx.organizationId, currency);
 
   return (
     <div className="space-y-4 sm:space-y-8">

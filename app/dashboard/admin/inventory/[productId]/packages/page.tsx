@@ -1,7 +1,5 @@
-import { redirect } from "next/navigation";
-import { auth } from "@/lib/auth";
-import { headers } from "next/headers";
 import { db } from "@/lib/db";
+import { requireOrgContext } from "@/lib/org-context";
 import Link from "next/link";
 import { ChevronRight, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -12,9 +10,10 @@ interface PageProps {
 }
 
 export async function generateMetadata({ params }: PageProps) {
+  const ctx = await requireOrgContext();
   const { productId } = await params;
-  const product = await db.product.findUnique({
-    where: { id: productId },
+  const product = await db.product.findFirst({
+    where: { id: productId, organizationId: ctx.organizationId },
     select: { name: true },
   });
 
@@ -24,18 +23,12 @@ export async function generateMetadata({ params }: PageProps) {
 }
 
 export default async function ProductPackagesPage({ params }: PageProps) {
-  // Authentication check
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user || session.user.role !== "ADMIN") {
-    redirect("/dashboard");
-  }
-
-  // Get product ID
+  const ctx = await requireOrgContext();
   const { productId } = await params;
 
   // Fetch product with packages and prices
-  const product = await db.product.findUnique({
-    where: { id: productId, isDeleted: false },
+  const product = await db.product.findFirst({
+    where: { id: productId, organizationId: ctx.organizationId, isDeleted: false },
     include: {
       packages: {
         include: {
@@ -76,6 +69,7 @@ export default async function ProductPackagesPage({ params }: PageProps) {
 
   const companionProducts = await db.product.findMany({
     where: {
+      organizationId: ctx.organizationId,
       isActive: true,
       isDeleted: false,
     },
