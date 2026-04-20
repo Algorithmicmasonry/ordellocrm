@@ -1,8 +1,7 @@
 "use server";
 
 import { db } from "@/lib/db";
-import { auth } from "@/lib/auth";
-import { headers } from "next/headers";
+import { requireOrgContext } from "@/lib/org-context";
 import { OrderStatus } from "@prisma/client";
 import { getDateRange, getSpecificDayRange } from "@/lib/date-utils";
 import type { TimePeriod } from "@/lib/types";
@@ -15,11 +14,10 @@ export async function getLeaderboardData(
   endDate?: string
 ) {
   try {
-    const session = await auth.api.getSession({ headers: await headers() });
-    if (!session?.user || session.user.role !== "SALES_REP") {
-      return { success: false, error: "Unauthorized" };
-    }
-    const currentUserId = session.user.id;
+    const ctx = await requireOrgContext();
+    if (ctx.role !== "SALES_REP") return { success: false, error: "Unauthorized" };
+
+    const currentUserId = ctx.userId;
 
     const isCustomRange = !!(startDate && endDate);
     let start: Date;
@@ -33,73 +31,66 @@ export async function getLeaderboardData(
       end = range.endDate;
     }
 
-    // Get all active sales reps
-    const reps = await db.user.findMany({
-      where: { role: "SALES_REP", isActive: true },
-      select: { id: true, name: true, email: true, image: true },
-      orderBy: { name: "asc" },
+    // Use OrganizationMember — role lives there in multi-tenant
+    const members = await db.organizationMember.findMany({
+      where: {
+        organizationId: ctx.organizationId,
+        role: "SALES_REP",
+        isActive: true,
+        isAiAgent: false,
+      },
+      include: { user: { select: { id: true, name: true, email: true, image: true } } },
+      orderBy: { user: { name: "asc" } },
     });
 
-    if (reps.length === 0) {
+    if (members.length === 0) {
       return { success: true, data: { reps: [], currentHoH: null, currentUserId } };
     }
 
-    // Get orders for the period (non-cancelled only)
+    const repIds = members.map((m) => m.userId);
+
     const orders = await db.order.findMany({
       where: {
-        assignedToId: { in: reps.map((r) => r.id) },
+        organizationId: ctx.organizationId,
+        assignedToId: { in: repIds },
         createdAt: { gte: start, lte: end },
         status: { not: OrderStatus.CANCELLED },
       },
       select: { assignedToId: true, status: true, deliveredAt: true },
     });
 
-    // Build per-rep stats
-    const statsMap = new Map<
-      string,
-      { total: number; delivered: number }
-    >();
-    for (const rep of reps) {
-      statsMap.set(rep.id, { total: 0, delivered: 0 });
-    }
+    const statsMap = new Map<string, { total: number; delivered: number }>();
+    for (const m of members) statsMap.set(m.userId, { total: 0, delivered: 0 });
+
     for (const order of orders) {
       if (!order.assignedToId) continue;
       const s = statsMap.get(order.assignedToId);
       if (!s) continue;
       s.total += 1;
-      if (
-        order.status === OrderStatus.DELIVERED &&
-        order.deliveredAt &&
-        order.deliveredAt >= start &&
-        order.deliveredAt <= end
-      ) {
+      if (order.status === OrderStatus.DELIVERED && order.deliveredAt && order.deliveredAt >= start && order.deliveredAt <= end) {
         s.delivered += 1;
       }
     }
 
-    // Get current HoH
-    const currentHoH = await getCurrentHoH();
+    const currentHoH = await getCurrentHoH(ctx.organizationId);
 
-    // Build ranked list
-    const rankedReps = reps
-      .map((rep) => {
-        const stats = statsMap.get(rep.id) ?? { total: 0, delivered: 0 };
-        const conversionRate =
-          stats.total > 0 ? (stats.delivered / stats.total) * 100 : 0;
+    const rankedReps = members
+      .map((m) => {
+        const stats = statsMap.get(m.userId) ?? { total: 0, delivered: 0 };
+        const conversionRate = stats.total > 0 ? (stats.delivered / stats.total) * 100 : 0;
         return {
-          id: rep.id,
-          name: rep.name,
-          image: rep.image,
+          id: m.userId,
+          name: m.user.name,
+          image: m.user.image,
           totalOrders: stats.total,
           deliveredOrders: stats.delivered,
           conversionRate: Math.round(conversionRate * 10) / 10,
-          isCurrentHoH: currentHoH?.userId === rep.id,
-          isCurrentUser: rep.id === currentUserId,
+          isCurrentHoH: currentHoH?.userId === m.userId,
+          isCurrentUser: m.userId === currentUserId,
         };
       })
       .sort((a, b) => {
-        if (b.conversionRate !== a.conversionRate)
-          return b.conversionRate - a.conversionRate;
+        if (b.conversionRate !== a.conversionRate) return b.conversionRate - a.conversionRate;
         return b.deliveredOrders - a.deliveredOrders;
       })
       .map((rep, idx) => ({ ...rep, rank: idx + 1 }));
@@ -109,12 +100,7 @@ export async function getLeaderboardData(
       data: {
         reps: rankedReps,
         currentHoH: currentHoH
-          ? {
-              userId: currentHoH.userId,
-              name: currentHoH.user.name,
-              titleWeekStart: currentHoH.titleWeekStart,
-              titleWeekEnd: currentHoH.titleWeekEnd,
-            }
+          ? { userId: currentHoH.userId, name: currentHoH.user.name, titleWeekStart: currentHoH.titleWeekStart, titleWeekEnd: currentHoH.titleWeekEnd }
           : null,
         currentUserId,
       },
