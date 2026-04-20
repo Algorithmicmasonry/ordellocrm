@@ -1,6 +1,5 @@
 import { redirect } from "next/navigation";
-import { auth } from "@/lib/auth";
-import { headers } from "next/headers";
+import { requireOrgContext } from "@/lib/org-context";
 import { db } from "@/lib/db";
 import Link from "next/link";
 import { ChevronRight, ExternalLink } from "lucide-react";
@@ -13,15 +12,14 @@ export const metadata = {
 };
 
 export default async function AiSandboxPage() {
-  const session = await auth.api.getSession({ headers: await headers() });
-
-  if (!session?.user || session.user.role !== "ADMIN") {
+  const ctx = await requireOrgContext();
+  if (ctx.role !== "ADMIN") {
     redirect("/dashboard");
   }
 
   // Fetch active products with packages for the product selector
   const products = await db.product.findMany({
-    where: { isActive: true, isDeleted: false },
+    where: { organizationId: ctx.organizationId, isActive: true, isDeleted: false },
     include: {
       packages: { where: { isActive: true }, select: { id: true } },
     },

@@ -1,6 +1,5 @@
 import { redirect } from "next/navigation";
-import { auth } from "@/lib/auth";
-import { headers } from "next/headers";
+import { requireOrgContext } from "@/lib/org-context";
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 import { NotificationsClient } from "@/app/dashboard/notifications/_components";
@@ -10,13 +9,8 @@ export default async function SalesRepNotificationsPage({
 }: {
   searchParams: Promise<{ page?: string; filter?: string }>;
 }) {
-  const session = await auth.api.getSession({ headers: await headers() });
-
-  if (!session?.user) {
-    redirect("/login");
-  }
-
-  if (session.user.role !== "SALES_REP") {
+  const ctx = await requireOrgContext();
+  if (ctx.role !== "SALES_REP") {
     redirect("/dashboard");
   }
 

@@ -1,6 +1,5 @@
 import { redirect } from "next/navigation";
-import { auth } from "@/lib/auth";
-import { headers } from "next/headers";
+import { requireOrgContext } from "@/lib/org-context";
 import { getOrderDetails } from "./actions";
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
@@ -45,9 +44,8 @@ export async function generateMetadata({ params }: PageProps) {
 }
 
 export default async function AdminOrderDetailsPage({ params }: PageProps) {
-  // Authentication check
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user || session.user.role !== "ADMIN") {
+  const ctx = await requireOrgContext();
+  if (ctx.role !== "ADMIN") {
     redirect("/dashboard");
   }
 

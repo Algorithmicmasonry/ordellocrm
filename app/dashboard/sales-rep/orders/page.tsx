@@ -1,6 +1,5 @@
 import { redirect } from "next/navigation";
-import { auth } from "@/lib/auth";
-import { headers } from "next/headers";
+import { requireOrgContext } from "@/lib/org-context";
 import { getAssignedOrders } from "../actions";
 import { AssignedOrdersTable, CreateOrderDialog } from "../_components";
 import type { OrderStatus } from "@prisma/client";
@@ -16,9 +15,8 @@ interface PageProps {
 }
 
 export default async function SalesRepOrdersPage({ searchParams }: PageProps) {
-  // Authentication check
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user || session.user.role !== "SALES_REP") {
+  const ctx = await requireOrgContext();
+  if (ctx.role !== "SALES_REP") {
     redirect("/dashboard");
   }
 

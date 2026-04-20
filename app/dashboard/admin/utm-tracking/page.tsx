@@ -1,13 +1,12 @@
-import { auth } from "@/lib/auth";
-import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { requireOrgContext } from "@/lib/org-context";
 import { DashboardHeader } from "../_components";
 import { getUTMPageData } from "./actions";
 import { UTMDashboardClient } from "./_components/utm-dashboard-client";
 
 export default async function UTMTrackingPage() {
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user || session.user.role !== "ADMIN") {
+  const ctx = await requireOrgContext();
+  if (ctx.role !== "ADMIN") {
     redirect("/dashboard");
   }
 

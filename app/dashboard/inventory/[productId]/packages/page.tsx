@@ -1,6 +1,5 @@
 import { redirect } from "next/navigation";
-import { auth } from "@/lib/auth";
-import { headers } from "next/headers";
+import { requireOrgContext } from "@/lib/org-context";
 import { db } from "@/lib/db";
 import Link from "next/link";
 import { ChevronRight, ArrowLeft } from "lucide-react";
@@ -13,7 +12,7 @@ interface PageProps {
 
 export async function generateMetadata({ params }: PageProps) {
   const { productId } = await params;
-  const product = await db.product.findUnique({
+  const product = await db.product.findFirst({
     where: { id: productId },
     select: { name: true },
   });
@@ -24,9 +23,8 @@ export async function generateMetadata({ params }: PageProps) {
 }
 
 export default async function ProductPackagesPage({ params }: PageProps) {
-  // Authentication check
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user || session.user.role !== "ADMIN") {
+  const ctx = await requireOrgContext();
+  if (ctx.role !== "INVENTORY_MANAGER" && ctx.role !== "ADMIN") {
     redirect("/dashboard");
   }
 
@@ -34,8 +32,8 @@ export default async function ProductPackagesPage({ params }: PageProps) {
   const { productId } = await params;
 
   // Fetch product with packages and prices
-  const product = await db.product.findUnique({
-    where: { id: productId, isDeleted: false },
+  const product = await db.product.findFirst({
+    where: { id: productId, organizationId: ctx.organizationId, isDeleted: false },
     include: {
       packages: {
         orderBy: { displayOrder: "asc" },

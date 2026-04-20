@@ -1,6 +1,5 @@
-import { auth } from "@/lib/auth";
-import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { requireOrgContext } from "@/lib/org-context";
 import { DashboardHeader, CurrencyFilter } from "../_components";
 import { AgentsStats, AgentsTable, ExportAgentsButton } from "./_components";
 import { getAgentStats, getAgentsWithMetrics, getUniqueZones } from "./actions";
@@ -15,15 +14,8 @@ export default async function AdminAgentsPage({
 }: {
   searchParams: SearchParams;
 }) {
-  const session = await auth.api.getSession({
-    headers: await headers(),
-  });
-
-  if (!session || !session.user) {
-    redirect("/login");
-  }
-
-  if (session.user.role !== "ADMIN") {
+  const ctx = await requireOrgContext();
+  if (ctx.role !== "ADMIN") {
     redirect("/dashboard");
   }
 

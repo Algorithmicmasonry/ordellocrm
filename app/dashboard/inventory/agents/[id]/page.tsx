@@ -1,7 +1,5 @@
 import { redirect } from "next/navigation";
-import { headers } from "next/headers";
-import { auth } from "@/lib/auth";
-import { db } from "@/lib/db";
+import { requireOrgContext } from "@/lib/org-context";
 import { getAgentDetails } from "@/app/dashboard/admin/agents/[id]/actions";
 import { AgentDetailsClient } from "@/app/dashboard/admin/agents/[id]/_components";
 
@@ -20,19 +18,8 @@ export default async function InventoryAgentDetailPage({
   const query = await searchParams;
   const period = (query.period || "month") as TimePeriod;
 
-  // Authentication check
-  const session = await auth.api.getSession({ headers: await headers() });
-
-  if (!session?.user) {
-    redirect("/login");
-  }
-
-  // Check if user is INVENTORY_MANAGER
-  const user = await db.user.findUnique({
-    where: { id: session.user.id },
-  });
-
-  if (user?.role !== "INVENTORY_MANAGER") {
+  const ctx = await requireOrgContext();
+  if (ctx.role !== "INVENTORY_MANAGER") {
     redirect("/dashboard");
   }
 

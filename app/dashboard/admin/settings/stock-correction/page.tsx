@@ -1,6 +1,5 @@
 import { redirect } from "next/navigation";
-import { auth } from "@/lib/auth";
-import { headers } from "next/headers";
+import { requireOrgContext } from "@/lib/org-context";
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 import { previewStockCorrections } from "@/app/actions/stock-correction";
@@ -12,13 +11,8 @@ export const metadata = {
 };
 
 export default async function StockCorrectionPage() {
-  const session = await auth.api.getSession({ headers: await headers() });
-
-  if (!session?.user) {
-    redirect("/login");
-  }
-
-  if (session.user.role !== "ADMIN") {
+  const ctx = await requireOrgContext();
+  if (ctx.role !== "ADMIN") {
     redirect("/dashboard");
   }
 

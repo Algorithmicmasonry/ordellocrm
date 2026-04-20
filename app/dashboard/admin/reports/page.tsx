@@ -1,7 +1,6 @@
-import { auth } from "@/lib/auth";
+import { requireOrgContext } from "@/lib/org-context";
 import type { TimePeriod } from "@/lib/types";
 import type { Currency } from "@prisma/client";
-import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { DashboardHeader, CurrencyFilter, PeriodFilter } from "../_components";
 import { DateRangePicker } from "./_components";
@@ -13,8 +12,8 @@ interface PageProps {
 }
 
 export default async function ReportsPage({ searchParams }: PageProps) {
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user || session.user.role !== "ADMIN") {
+  const ctx = await requireOrgContext();
+  if (ctx.role !== "ADMIN") {
     redirect("/dashboard");
   }
 

@@ -1,7 +1,5 @@
-import { auth } from "@/lib/auth";
-import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { db } from "@/lib/db";
+import { requireOrgContext } from "@/lib/org-context";
 import {
   AgentsStats,
   AgentsTable,
@@ -13,20 +11,8 @@ import {
 } from "@/app/dashboard/admin/agents/actions";
 
 export default async function InventoryAgentsPage() {
-  const session = await auth.api.getSession({
-    headers: await headers(),
-  });
-
-  if (!session || !session.user) {
-    redirect("/login");
-  }
-
-  // Check if user is INVENTORY_MANAGER
-  const user = await db.user.findUnique({
-    where: { id: session.user.id },
-  });
-
-  if (user?.role !== "INVENTORY_MANAGER") {
+  const ctx = await requireOrgContext();
+  if (ctx.role !== "INVENTORY_MANAGER") {
     redirect("/dashboard");
   }
 

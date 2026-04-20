@@ -1,6 +1,5 @@
 import { redirect } from "next/navigation";
-import { auth } from "@/lib/auth";
-import { headers } from "next/headers";
+import { requireOrgContext } from "@/lib/org-context";
 import { getProductsCatalog } from "./actions";
 import { ProductsGrid, ProductsHeader, ProductsSearch } from "./_components";
 import Link from "next/link";
@@ -16,9 +15,8 @@ interface PageProps {
 }
 
 export default async function SalesRepProductsPage({ searchParams }: PageProps) {
-  // Authentication check
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user || session.user.role !== "SALES_REP") {
+  const ctx = await requireOrgContext();
+  if (ctx.role !== "SALES_REP") {
     redirect("/dashboard");
   }
 

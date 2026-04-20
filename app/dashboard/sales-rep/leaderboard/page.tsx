@@ -1,6 +1,5 @@
-import { auth } from "@/lib/auth";
-import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { requireOrgContext } from "@/lib/org-context";
 import { DashboardHeader } from "../_components/dashboard-header";
 import { DateRangeFilter } from "../_components/date-range-filter";
 import { LeaderboardTable } from "./_components";
@@ -19,8 +18,8 @@ interface PageProps {
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 export default async function LeaderboardPage({ searchParams }: PageProps) {
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user || session.user.role !== "SALES_REP") {
+  const ctx = await requireOrgContext();
+  if (ctx.role !== "SALES_REP") {
     redirect("/dashboard");
   }
 

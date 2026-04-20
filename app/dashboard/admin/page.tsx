@@ -5,11 +5,10 @@ import {
   getTopProducts,
 } from "@/app/actions/dashboard-stats";
 import { Button } from "@/components/ui/button";
-import { auth } from "@/lib/auth";
+import { requireOrgContext } from "@/lib/org-context";
 import type { TimePeriod } from "@/lib/types";
 import type { Currency } from "@prisma/client";
 import { Download } from "lucide-react";
-import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import {
   CurrencyFilter,
@@ -31,15 +30,8 @@ interface AdminDashboardPageProps {
 export default async function AdminDashboardPage({
   searchParams,
 }: AdminDashboardPageProps) {
-  const session = await auth.api.getSession({
-    headers: await headers(),
-  });
-
-  if (!session || !session.user) {
-    redirect("/login");
-  }
-
-  if (session.user.role !== "ADMIN") {
+  const ctx = await requireOrgContext();
+  if (ctx.role !== "ADMIN") {
     redirect("/dashboard");
   }
 

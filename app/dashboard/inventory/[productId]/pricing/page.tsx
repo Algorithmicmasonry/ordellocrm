@@ -1,6 +1,5 @@
-import { auth } from "@/lib/auth";
+import { requireOrgContext } from "@/lib/org-context";
 import { db } from "@/lib/db";
-import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft } from "lucide-react";
@@ -14,19 +13,16 @@ interface ProductPricingPageProps {
 export default async function ProductPricingPage({
   params,
 }: ProductPricingPageProps) {
-  const session = await auth.api.getSession({
-    headers: await headers(),
-  });
-
-  if (!session || !session.user || session.user.role !== "ADMIN") {
-    redirect("/login");
+  const ctx = await requireOrgContext();
+  if (ctx.role !== "INVENTORY_MANAGER" && ctx.role !== "ADMIN") {
+    redirect("/dashboard");
   }
 
   const { productId } = await params;
 
   // Fetch product with prices
-  const product = await db.product.findUnique({
-    where: { id: productId },
+  const product = await db.product.findFirst({
+    where: { id: productId, organizationId: ctx.organizationId },
     include: {
       productPrices: {
         orderBy: { currency: "asc" },

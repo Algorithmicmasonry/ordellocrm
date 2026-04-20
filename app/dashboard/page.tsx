@@ -1,25 +1,16 @@
-import { auth } from "@/lib/auth";
-import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { requireOrgContext } from "@/lib/org-context";
 
 export default async function DashboardPage() {
-  const session = await auth.api.getSession({
-    headers: await headers(),
-  });
+  const ctx = await requireOrgContext();
 
-  if (!session || !session.user) {
-    redirect("/login");
-  }
-
-  // Redirect to role-specific dashboard
-  if (session.user.role === "ADMIN") {
+  if (ctx.role === "ADMIN") {
     redirect("/dashboard/admin");
-  } else if (session.user.role === "SALES_REP") {
+  } else if (ctx.role === "SALES_REP") {
     redirect("/dashboard/sales-rep");
-  } else if (session.user.role === "INVENTORY_MANAGER") {
+  } else if (ctx.role === "INVENTORY_MANAGER") {
     redirect("/dashboard/inventory");
   }
 
-  // Fallback
   redirect("/login");
 }

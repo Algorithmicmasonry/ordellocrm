@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
-import { auth } from "@/lib/auth";
-import { headers } from "next/headers";
+import { requireOrgContext } from "@/lib/org-context";
+import { db } from "@/lib/db";
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 import { PushNotificationManager } from "@/app/_components/push-notification-manager";
@@ -12,15 +12,12 @@ export const metadata = {
 };
 
 export default async function AdminSettingsPage() {
-  const session = await auth.api.getSession({ headers: await headers() });
-
-  if (!session?.user) {
-    redirect("/login");
-  }
-
-  if (session.user.role !== "ADMIN") {
+  const ctx = await requireOrgContext();
+  if (ctx.role !== "ADMIN") {
     redirect("/dashboard");
   }
+
+  const user = await db.user.findUnique({ where: { id: ctx.userId }, select: { name: true } });
 
   return (
     <div className="flex flex-col gap-4 sm:gap-6">
@@ -74,16 +71,16 @@ export default async function AdminSettingsPage() {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <p className="text-sm text-muted-foreground">Name</p>
-                <p className="font-medium">{session.user.name}</p>
+                <p className="font-medium">{user?.name}</p>
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Email</p>
-                <p className="font-medium">{session.user.email}</p>
+                <p className="font-medium">{ctx.userEmail}</p>
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Role</p>
                 <p className="font-medium capitalize">
-                  {session.user.role.toLowerCase().replace("_", " ")}
+                  {ctx.role.toLowerCase().replace("_", " ")}
                 </p>
               </div>
             </div>

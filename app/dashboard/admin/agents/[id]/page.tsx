@@ -1,6 +1,5 @@
 import { redirect } from "next/navigation";
-import { headers } from "next/headers";
-import { auth } from "@/lib/auth";
+import { requireOrgContext } from "@/lib/org-context";
 import { getAgentDetails } from "./actions";
 import { AgentDetailsClient } from "./_components";
 import type { Currency } from "@prisma/client";
@@ -22,9 +21,8 @@ export default async function AgentDetailPage({
   const currency = query.currency;
   const timezone = query.tz;
 
-  // Authentication check
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user || session.user.role !== "ADMIN") {
+  const ctx = await requireOrgContext();
+  if (ctx.role !== "ADMIN") {
     redirect("/dashboard");
   }
 

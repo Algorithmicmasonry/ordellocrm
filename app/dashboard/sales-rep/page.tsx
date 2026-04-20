@@ -1,6 +1,5 @@
 import { redirect } from "next/navigation";
-import { auth } from "@/lib/auth";
-import { headers } from "next/headers";
+import { requireOrgContext } from "@/lib/org-context";
 import { getSalesRepDashboardStats, getAssignedOrders, getRepEarnings } from "./actions";
 import {
   DashboardStats,
@@ -33,9 +32,8 @@ interface PageProps {
 export default async function SalesRepDashboardPage({
   searchParams,
 }: PageProps) {
-  // Authentication check
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user || session.user.role !== "SALES_REP") {
+  const ctx = await requireOrgContext();
+  if (ctx.role !== "SALES_REP") {
     redirect("/dashboard");
   }
 
