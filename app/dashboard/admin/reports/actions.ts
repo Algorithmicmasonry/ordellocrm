@@ -1,6 +1,7 @@
 "use server";
 
 import { db } from "@/lib/db";
+import { requireOrgContext } from "@/lib/org-context";
 import { getDateRange } from "@/lib/date-utils";
 import type { TimePeriod } from "@/lib/types";
 import type { Currency } from "@prisma/client";
@@ -9,6 +10,10 @@ import {
   attributeExpense,
   buildUnitsSoldMap,
 } from "@/lib/expense-utils";
+
+function requireAdmin(role: string) {
+  if (role !== "ADMIN" && role !== "OWNER") throw new Error("Unauthorized");
+}
 
 /**
  * Get financial overview data
@@ -21,7 +26,9 @@ export async function getFinancialOverview(
   timezone?: string,
 ) {
   try {
-    // Use custom dates if provided, otherwise calculate from period
+    const ctx = await requireOrgContext();
+    requireAdmin(ctx.role);
+
     let startDate: Date;
     let endDate: Date;
 
@@ -34,46 +41,41 @@ export async function getFinancialOverview(
       endDate = dateRange.endDate;
     }
 
-    // Get previous period for comparison
     const periodLength = endDate.getTime() - startDate.getTime();
     const previousStartDate = new Date(startDate.getTime() - periodLength);
     const previousEndDate = new Date(startDate.getTime() - 1);
 
-    // Current period orders — anchor on deliveredAt so revenue matches the dashboard
     const currentOrders = await db.order.findMany({
       where: {
+        organizationId: ctx.organizationId,
         status: "DELIVERED",
         deliveredAt: { gte: startDate, lte: endDate },
         ...(currency && { currency }),
       },
-      include: {
-        items: { include: { product: true } },
-      },
+      include: { items: { include: { product: true } } },
     });
 
-    // Previous period orders
     const previousOrders = await db.order.findMany({
       where: {
+        organizationId: ctx.organizationId,
         status: "DELIVERED",
         deliveredAt: { gte: previousStartDate, lte: previousEndDate },
         ...(currency && { currency }),
       },
-      include: {
-        items: { include: { product: true } },
-      },
+      include: { items: { include: { product: true } } },
     });
 
-    // Current period expenses
     const currentExpenses = await db.expense.findMany({
       where: {
+        organizationId: ctx.organizationId,
         date: { gte: startDate, lte: endDate },
         ...(currency && { currency }),
       },
     });
 
-    // Previous period expenses
     const previousExpenses = await db.expense.findMany({
       where: {
+        organizationId: ctx.organizationId,
         date: { gte: previousStartDate, lte: previousEndDate },
         ...(currency && { currency }),
       },
@@ -159,11 +161,8 @@ export async function getFinancialOverview(
         ? ((currentTotalExpenses - previousTotalExpenses) / previousTotalExpenses) * 100
         : currentTotalExpenses > 0 ? 100 : 0;
 
-    // Generate revenue vs expenses chart data based on period
-    const chartData = await generateChartDataByPeriod(startDate, endDate, period, currency);
-
-    // Calculate expense categories
-    const expensesByCategory = await getExpensesByCategory(startDate, endDate, currency);
+    const chartData = await generateChartDataByPeriod(startDate, endDate, period, ctx.organizationId, currency);
+    const expensesByCategory = await getExpensesByCategory(startDate, endDate, ctx.organizationId, currency);
 
     return {
       success: true,
@@ -206,6 +205,7 @@ async function generateChartDataByPeriod(
   startDate: Date,
   endDate: Date,
   period: TimePeriod,
+  organizationId: string,
   currency?: Currency
 ) {
   const chartData: Array<{ label: string; revenue: number; expenses: number }> = [];
@@ -220,6 +220,7 @@ async function generateChartDataByPeriod(
 
       const orders = await db.order.findMany({
         where: {
+          organizationId,
           status: "DELIVERED",
           deliveredAt: { gte: hourStart, lte: hourEnd },
           ...(currency && { currency }),
@@ -229,6 +230,7 @@ async function generateChartDataByPeriod(
 
       const expenses = await db.expense.findMany({
         where: {
+          organizationId,
           date: { gte: hourStart, lte: hourEnd },
           ...(currency && { currency }),
         },
@@ -260,6 +262,7 @@ async function generateChartDataByPeriod(
 
       const orders = await db.order.findMany({
         where: {
+          organizationId,
           status: "DELIVERED",
           deliveredAt: { gte: dayStart, lte: dayEnd },
           ...(currency && { currency }),
@@ -269,6 +272,7 @@ async function generateChartDataByPeriod(
 
       const expenses = await db.expense.findMany({
         where: {
+          organizationId,
           date: { gte: dayStart, lte: dayEnd },
           ...(currency && { currency }),
         },
@@ -304,6 +308,7 @@ async function generateChartDataByPeriod(
 
       const orders = await db.order.findMany({
         where: {
+          organizationId,
           status: "DELIVERED",
           deliveredAt: { gte: dayStart, lte: dayEnd },
           ...(currency && { currency }),
@@ -313,6 +318,7 @@ async function generateChartDataByPeriod(
 
       const expenses = await db.expense.findMany({
         where: {
+          organizationId,
           date: { gte: dayStart, lte: dayEnd },
           ...(currency && { currency }),
         },
@@ -349,6 +355,7 @@ async function generateChartDataByPeriod(
 
       const orders = await db.order.findMany({
         where: {
+          organizationId,
           status: "DELIVERED",
           deliveredAt: { gte: monthStart, lte: monthEnd },
           ...(currency && { currency }),
@@ -358,6 +365,7 @@ async function generateChartDataByPeriod(
 
       const expenses = await db.expense.findMany({
         where: {
+          organizationId,
           date: { gte: monthStart, lte: monthEnd },
           ...(currency && { currency }),
         },
@@ -392,9 +400,10 @@ async function generateChartDataByPeriod(
 /**
  * Get expenses grouped by type
  */
-async function getExpensesByCategory(startDate: Date, endDate: Date, currency?: Currency) {
+async function getExpensesByCategory(startDate: Date, endDate: Date, organizationId: string, currency?: Currency) {
   const expenses = await db.expense.findMany({
     where: {
+      organizationId,
       date: { gte: startDate, lte: endDate },
       ...(currency && { currency }),
     },
@@ -428,7 +437,9 @@ export async function getSalesRepFinance(
   timezone?: string,
 ) {
   try {
-    // Use custom dates if provided, otherwise calculate from period
+    const ctx = await requireOrgContext();
+    requireAdmin(ctx.role);
+
     let startDate: Date;
     let endDate: Date;
 
@@ -441,34 +452,35 @@ export async function getSalesRepFinance(
       endDate = dateRange.endDate;
     }
 
-    // Get all sales reps
-    const salesReps = await db.user.findMany({
+    // Get all sales reps from OrganizationMember (role lives there in multi-tenant)
+    const members = await db.organizationMember.findMany({
       where: {
+        organizationId: ctx.organizationId,
         role: "SALES_REP",
         isActive: true,
+        isAiAgent: false,
       },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-      },
+      include: { user: { select: { id: true, name: true, email: true } } },
+      orderBy: { user: { name: "asc" } },
     });
+    const salesReps = members.map((m) => ({
+      id: m.userId,
+      name: m.user.name,
+      email: m.user.email,
+    }));
 
-    // Pre-fetch company-wide delivered orders for the period (for expense attribution)
     const allDeliveredOrders = await db.order.findMany({
       where: {
+        organizationId: ctx.organizationId,
         status: "DELIVERED",
         deliveredAt: { gte: startDate, lte: endDate },
         ...(currency && { currency }),
       },
       include: {
-        items: {
-          select: { productId: true, quantity: true },
-        },
+        items: { select: { productId: true, quantity: true } },
       },
     });
 
-    // Build map: productId → total units sold company-wide
     const companyUnitsByProduct = new Map<string, number>();
     allDeliveredOrders.forEach((order) => {
       order.items.forEach((item) => {
@@ -479,10 +491,9 @@ export async function getSalesRepFinance(
       });
     });
 
-    // Pre-fetch all product-linked expenses for the period, excluding ad_spend
-    // (ad_spend is a company-level marketing cost, not attributable to individual reps)
     const allProductExpenses = await db.expense.findMany({
       where: {
+        organizationId: ctx.organizationId,
         productId: { not: null },
         type: { not: "ad_spend" },
         date: { gte: startDate, lte: endDate },
@@ -490,12 +501,11 @@ export async function getSalesRepFinance(
       },
     });
 
-    // Get performance data for each sales rep
     const repPerformance = await Promise.all(
       salesReps.map(async (rep) => {
-        // Get delivered orders for this rep
         const orders = await db.order.findMany({
           where: {
+            organizationId: ctx.organizationId,
             assignedToId: rep.id,
             status: "DELIVERED",
             deliveredAt: { gte: startDate, lte: endDate },
@@ -648,7 +658,9 @@ export async function getAgentCostAnalysis(
   timezone?: string,
 ) {
   try {
-    // Use custom dates if provided, otherwise calculate from period
+    const ctx = await requireOrgContext();
+    requireAdmin(ctx.role);
+
     let startDate: Date;
     let endDate: Date;
 
@@ -661,9 +673,9 @@ export async function getAgentCostAnalysis(
       endDate = dateRange.endDate;
     }
 
-    // Get all active agents
     const agents = await db.agent.findMany({
       where: {
+        organizationId: ctx.organizationId,
         isActive: true,
       },
       include: {
@@ -679,9 +691,9 @@ export async function getAgentCostAnalysis(
       },
     });
 
-    // Get all delivered orders with agent assignments in the period
     const deliveredOrders = await db.order.findMany({
       where: {
+        organizationId: ctx.organizationId,
         status: "DELIVERED",
         agentId: { not: null },
         deliveredAt: { gte: startDate, lte: endDate },
@@ -697,23 +709,20 @@ export async function getAgentCostAnalysis(
       },
     });
 
-    // Get delivery expenses for the period (for the KPI card)
     const deliveryExpenses = await db.expense.findMany({
       where: {
+        organizationId: ctx.organizationId,
         type: "delivery",
         date: { gte: startDate, lte: endDate },
         ...(currency && { currency }),
       },
     });
 
-    const totalDeliveryExpenses = deliveryExpenses.reduce(
-      (sum, exp) => sum + exp.amount,
-      0
-    );
+    const totalDeliveryExpenses = deliveryExpenses.reduce((sum, exp) => sum + exp.amount, 0);
 
-    // Pre-fetch all product-linked expenses (excluding ad_spend) for attribution
     const allAgentProductExpenses = await db.expense.findMany({
       where: {
+        organizationId: ctx.organizationId,
         productId: { not: null },
         type: { not: "ad_spend" },
         date: { gte: startDate, lte: endDate },
@@ -734,9 +743,9 @@ export async function getAgentCostAnalysis(
           (order) => order.agentId === agent.id
         );
 
-        // Get all orders assigned to this agent (for success rate)
         const allAssignedOrders = await db.order.findMany({
           where: {
+            organizationId: ctx.organizationId,
             agentId: agent.id,
             createdAt: { gte: startDate, lte: endDate },
             ...(currency && { currency }),
@@ -907,6 +916,7 @@ export async function getAgentCostAnalysis(
 
     const previousDeliveryExpenses = await db.expense.findMany({
       where: {
+        organizationId: ctx.organizationId,
         type: "delivery",
         date: { gte: previousStartDate, lte: previousEndDate },
         ...(currency && { currency }),
@@ -981,7 +991,9 @@ export async function getProfitLossStatement(
   timezone?: string,
 ) {
   try {
-    // Use custom dates if provided, otherwise calculate from period
+    const ctx = await requireOrgContext();
+    requireAdmin(ctx.role);
+
     let startDate: Date;
     let endDate: Date;
 
@@ -994,46 +1006,41 @@ export async function getProfitLossStatement(
       endDate = dateRange.endDate;
     }
 
-    // Get previous period for comparison
     const periodLength = endDate.getTime() - startDate.getTime();
     const previousStartDate = new Date(startDate.getTime() - periodLength);
     const previousEndDate = new Date(startDate.getTime() - 1);
 
-    // Current period orders — anchor on deliveredAt for consistent revenue recognition
     const currentOrders = await db.order.findMany({
       where: {
+        organizationId: ctx.organizationId,
         status: "DELIVERED",
         deliveredAt: { gte: startDate, lte: endDate },
         ...(currency && { currency }),
       },
-      include: {
-        items: true,
-      },
+      include: { items: true },
     });
 
-    // Previous period orders
     const previousOrders = await db.order.findMany({
       where: {
+        organizationId: ctx.organizationId,
         status: "DELIVERED",
         deliveredAt: { gte: previousStartDate, lte: previousEndDate },
         ...(currency && { currency }),
       },
-      include: {
-        items: true,
-      },
+      include: { items: true },
     });
 
-    // Current period expenses
     const currentExpenses = await db.expense.findMany({
       where: {
+        organizationId: ctx.organizationId,
         date: { gte: startDate, lte: endDate },
         ...(currency && { currency }),
       },
     });
 
-    // Previous period expenses
     const previousExpenses = await db.expense.findMany({
       where: {
+        organizationId: ctx.organizationId,
         date: { gte: previousStartDate, lte: previousEndDate },
         ...(currency && { currency }),
       },
@@ -1234,7 +1241,9 @@ export async function getProductProfitability(
   timezone?: string,
 ) {
   try {
-    // Use custom dates if provided, otherwise calculate from period
+    const ctx = await requireOrgContext();
+    requireAdmin(ctx.role);
+
     let startDate: Date;
     let endDate: Date;
 
@@ -1247,39 +1256,26 @@ export async function getProductProfitability(
       endDate = dateRange.endDate;
     }
 
-    // Fetch all products (including soft-deleted for historical data)
     const products = await db.product.findMany({
-      select: {
-        id: true,
-        name: true,
-        sku: true,
-        price: true,
-        cost: true,
-      },
+      where: { organizationId: ctx.organizationId },
+      select: { id: true, name: true, sku: true, price: true, cost: true },
     });
 
-    // Fetch all delivered orders in the period with items
     const deliveredOrders = await db.order.findMany({
       where: {
+        organizationId: ctx.organizationId,
         status: "DELIVERED",
-        deliveredAt: {
-          gte: startDate,
-          lte: endDate,
-        },
+        deliveredAt: { gte: startDate, lte: endDate },
         ...(currency && { currency }),
       },
       include: {
-        items: {
-          include: {
-            product: true,
-          },
-        },
+        items: { include: { product: true } },
       },
     });
 
-    // Fetch all product expenses in the period
     const productExpenses = await db.expense.findMany({
       where: {
+        organizationId: ctx.organizationId,
         date: { gte: startDate, lte: endDate },
         productId: { not: null },
         ...(currency && { currency }),

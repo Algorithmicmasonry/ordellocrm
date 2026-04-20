@@ -1,8 +1,7 @@
 "use server";
 
 import { db } from "@/lib/db";
-import { auth } from "@/lib/auth";
-import { headers } from "next/headers";
+import { requireOrgContext } from "@/lib/org-context";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -19,7 +18,6 @@ export interface UTMOrder {
   utmContent: string | null;
   utmMedium: string | null;
   createdAt: Date;
-  // resolved labels
   campaignLabel: string | null;
   contentLabel: string | null;
 }
@@ -48,6 +46,10 @@ export interface UTMPageData {
   totalRevenue: number;
 }
 
+function requireAdmin(role: string) {
+  if (role !== "ADMIN" && role !== "OWNER") throw new Error("Unauthorized");
+}
+
 // ---------------------------------------------------------------------------
 // getUTMPageData — all data for the page in one call
 // ---------------------------------------------------------------------------
@@ -58,14 +60,15 @@ export async function getUTMPageData(): Promise<{
   error?: string;
 }> {
   try {
-    const session = await auth.api.getSession({ headers: await headers() });
-    if (!session?.user || session.user.role !== "ADMIN") {
-      return { success: false, error: "Unauthorized" };
-    }
+    const ctx = await requireOrgContext();
+    requireAdmin(ctx.role);
 
-    // Only orders that have utm_campaign set
     const orders = await db.order.findMany({
-      where: { isSandbox: false, utmCampaign: { not: null } },
+      where: {
+        organizationId: ctx.organizationId,
+        isSandbox: false,
+        utmCampaign: { not: null },
+      },
       select: {
         id: true,
         orderNumber: true,
@@ -93,9 +96,9 @@ export async function getUTMPageData(): Promise<{
       ...new Set(orders.map((o) => o.utmContent).filter(Boolean) as string[]),
     ];
 
-    // Fetch all labels in one query
     const labelRows = await db.campaignLabel.findMany({
       where: {
+        organizationId: ctx.organizationId,
         OR: [
           { key: { in: campaignKeys }, type: "campaign" },
           ...(contentKeys.length ? [{ key: { in: contentKeys }, type: "content" }] : []),
@@ -110,18 +113,11 @@ export async function getUTMPageData(): Promise<{
       if (l.type === "content") contentLabelMap[l.key] = l.label;
     }
 
-    // Build campaign stats
     const campaignMap: Record<string, CampaignStat> = {};
     for (const o of orders) {
       const key = o.utmCampaign!;
       if (!campaignMap[key]) {
-        campaignMap[key] = {
-          campaign: key,
-          label: campaignLabelMap[key] ?? null,
-          orders: 0,
-          delivered: 0,
-          revenue: 0,
-        };
+        campaignMap[key] = { campaign: key, label: campaignLabelMap[key] ?? null, orders: 0, delivered: 0, revenue: 0 };
       }
       campaignMap[key].orders++;
       if (o.status === "DELIVERED") {
@@ -130,19 +126,12 @@ export async function getUTMPageData(): Promise<{
       }
     }
 
-    // Build creative stats
     const contentMap: Record<string, CreativeStat> = {};
     for (const o of orders) {
       if (!o.utmContent) continue;
       const key = o.utmContent;
       if (!contentMap[key]) {
-        contentMap[key] = {
-          content: key,
-          label: contentLabelMap[key] ?? null,
-          orders: 0,
-          delivered: 0,
-          revenue: 0,
-        };
+        contentMap[key] = { content: key, label: contentLabelMap[key] ?? null, orders: 0, delivered: 0, revenue: 0 };
       }
       contentMap[key].orders++;
       if (o.status === "DELIVERED") {
@@ -185,19 +174,19 @@ export async function saveCampaignLabel(
   label: string,
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const session = await auth.api.getSession({ headers: await headers() });
-    if (!session?.user || session.user.role !== "ADMIN") {
-      return { success: false, error: "Unauthorized" };
-    }
+    const ctx = await requireOrgContext();
+    requireAdmin(ctx.role);
 
     if (!label.trim()) {
-      await db.campaignLabel.deleteMany({ where: { key, type } });
+      await db.campaignLabel.deleteMany({
+        where: { organizationId: ctx.organizationId, key, type },
+      });
       return { success: true };
     }
 
     await db.campaignLabel.upsert({
-      where: { key_type: { key, type } },
-      create: { key, type, label: label.trim() },
+      where: { organizationId_key_type: { organizationId: ctx.organizationId, key, type } },
+      create: { organizationId: ctx.organizationId, key, type, label: label.trim() },
       update: { label: label.trim() },
     });
 
