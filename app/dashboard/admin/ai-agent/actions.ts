@@ -1,8 +1,7 @@
 "use server";
 
-import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { headers } from "next/headers";
+import { requireOrgContext } from "@/lib/org-context";
 import { revalidatePath } from "next/cache";
 import type { AiCallStatus, AiCallOutcome } from "@prisma/client";
 
@@ -13,7 +12,7 @@ import type { AiCallStatus, AiCallOutcome } from "@prisma/client";
 export interface AiDashboardStats {
   totalCallsMade: number;
   answeredCalls: number;
-  answerRate: number; // percentage
+  answerRate: number;
   avgDurationSecs: number;
   ordersInPipeline: number;
   ordersReached: number;
@@ -54,72 +53,58 @@ export interface AiPipelineOrder {
   lastCallAt: Date | null;
 }
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-async function requireAdmin() {
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user || session.user.role !== "ADMIN") {
-    throw new Error("Unauthorized");
-  }
-  return session.user;
+export interface SalesRepOption {
+  id: string;
+  name: string;
 }
 
 // ---------------------------------------------------------------------------
 // Get all dashboard data in one call
 // ---------------------------------------------------------------------------
 
-export async function getAiDashboardData(): Promise<{
-  success: true;
-  stats: AiDashboardStats;
-  recentCalls: AiCallLogRow[];
-  pipelineOrders: AiPipelineOrder[];
-} | { success: false; error: string }> {
+export async function getAiDashboardData(): Promise<
+  | { success: true; stats: AiDashboardStats; recentCalls: AiCallLogRow[]; pipelineOrders: AiPipelineOrder[] }
+  | { success: false; error: string }
+> {
   try {
-    await requireAdmin();
+    const ctx = await requireOrgContext();
+    if (ctx.role !== "ADMIN" && ctx.role !== "OWNER") throw new Error("Unauthorized");
+
+    const orgOrderFilter = { organizationId: ctx.organizationId };
 
     const [
       callLogs,
       outcomeAgg,
       statusAgg,
       pipelineOrdersRaw,
+      totalCallsMade,
       reachedCount,
       unreachableCount,
       completedCount,
     ] = await Promise.all([
-      // Recent call logs with order info
       db.aiCallLog.findMany({
+        where: { order: orgOrderFilter },
         include: {
           order: {
-            select: {
-              orderNumber: true,
-              customerName: true,
-              customerPhone: true,
-            },
+            select: { orderNumber: true, customerName: true, customerPhone: true },
           },
         },
         orderBy: { createdAt: "desc" },
         take: 100,
       }),
-
-      // Outcome breakdown
       db.aiCallLog.groupBy({
         by: ["outcome"],
         _count: { outcome: true },
-        where: { outcome: { not: null } },
+        where: { outcome: { not: null }, order: orgOrderFilter },
       }),
-
-      // Status breakdown (orders with AI status)
       db.order.groupBy({
         by: ["aiCallStatus"],
         _count: { aiCallStatus: true },
-        where: { aiCallStatus: { not: null }, isSandbox: false },
+        where: { ...orgOrderFilter, aiCallStatus: { not: null }, isSandbox: false },
       }),
-
-      // Orders currently in the AI pipeline
       db.order.findMany({
         where: {
+          ...orgOrderFilter,
           aiCallStatus: { in: ["PENDING", "IN_PROGRESS", "REACHED", "UNREACHABLE"] },
           isSandbox: false,
         },
@@ -145,30 +130,22 @@ export async function getAiDashboardData(): Promise<{
         orderBy: { createdAt: "desc" },
         take: 100,
       }),
-
-      // Counts by AI status
-      db.order.count({ where: { aiCallStatus: "REACHED", isSandbox: false } }),
-      db.order.count({ where: { aiCallStatus: "UNREACHABLE", isSandbox: false } }),
-      db.order.count({ where: { aiCallStatus: "COMPLETED", isSandbox: false } }),
+      db.aiCallLog.count({ where: { order: orgOrderFilter } }),
+      db.order.count({ where: { ...orgOrderFilter, aiCallStatus: "REACHED", isSandbox: false } }),
+      db.order.count({ where: { ...orgOrderFilter, aiCallStatus: "UNREACHABLE", isSandbox: false } }),
+      db.order.count({ where: { ...orgOrderFilter, aiCallStatus: "COMPLETED", isSandbox: false } }),
     ]);
 
-    // Calculate stats
-    const totalCallsMade = callLogs.length > 0
-      ? await db.aiCallLog.count()
-      : 0;
-
-    const answeredLogs = callLogs.filter((l) => l.outcome === "ANSWERED");
     const answeredTotal = outcomeAgg.find((o) => o.outcome === "ANSWERED")?._count.outcome ?? 0;
-
     const durations = callLogs.filter((l) => l.durationSecs != null);
-    const avgDurationSecs = durations.length > 0
-      ? Math.round(durations.reduce((sum, l) => sum + (l.durationSecs ?? 0), 0) / durations.length)
-      : 0;
-
+    const avgDurationSecs =
+      durations.length > 0
+        ? Math.round(durations.reduce((sum, l) => sum + (l.durationSecs ?? 0), 0) / durations.length)
+        : 0;
     const totalWithOutcome = outcomeAgg.reduce((sum, o) => sum + o._count.outcome, 0);
 
     const stats: AiDashboardStats = {
-      totalCallsMade: totalCallsMade || callLogs.length,
+      totalCallsMade,
       answeredCalls: answeredTotal,
       answerRate: totalWithOutcome > 0 ? Math.round((answeredTotal / totalWithOutcome) * 100) : 0,
       avgDurationSecs,
@@ -176,14 +153,8 @@ export async function getAiDashboardData(): Promise<{
       ordersReached: reachedCount,
       ordersUnreachable: unreachableCount,
       ordersCompleted: completedCount,
-      outcomeBreakdown: outcomeAgg.map((o) => ({
-        outcome: o.outcome!,
-        count: o._count.outcome,
-      })),
-      statusBreakdown: statusAgg.map((s) => ({
-        status: s.aiCallStatus!,
-        count: s._count.aiCallStatus,
-      })),
+      outcomeBreakdown: outcomeAgg.map((o) => ({ outcome: o.outcome!, count: o._count.outcome })),
+      statusBreakdown: statusAgg.map((s) => ({ status: s.aiCallStatus!, count: s._count.aiCallStatus })),
     };
 
     const recentCalls: AiCallLogRow[] = callLogs.map((log) => ({
@@ -230,22 +201,18 @@ export async function getAiDashboardData(): Promise<{
 
 export async function retryAiCall(orderId: string) {
   try {
-    await requireAdmin();
+    const ctx = await requireOrgContext();
+    if (ctx.role !== "ADMIN" && ctx.role !== "OWNER") throw new Error("Unauthorized");
 
-    const order = await db.order.findUnique({
-      where: { id: orderId },
-      select: { id: true, aiCallStatus: true, isSandbox: true },
+    const order = await db.order.findFirst({
+      where: { id: orderId, organizationId: ctx.organizationId },
+      select: { id: true },
     });
-
     if (!order) return { success: false as const, error: "Order not found" };
 
-    // Reset to PENDING with next call at now
     await db.order.update({
       where: { id: orderId },
-      data: {
-        aiCallStatus: "PENDING",
-        aiNextCallAt: new Date(),
-      },
+      data: { aiCallStatus: "PENDING", aiNextCallAt: new Date() },
     });
 
     revalidatePath("/dashboard/admin/ai-agent");
@@ -261,14 +228,18 @@ export async function retryAiCall(orderId: string) {
 
 export async function cancelAiCalls(orderId: string) {
   try {
-    await requireAdmin();
+    const ctx = await requireOrgContext();
+    if (ctx.role !== "ADMIN" && ctx.role !== "OWNER") throw new Error("Unauthorized");
+
+    const order = await db.order.findFirst({
+      where: { id: orderId, organizationId: ctx.organizationId },
+      select: { id: true },
+    });
+    if (!order) return { success: false as const, error: "Order not found" };
 
     await db.order.update({
       where: { id: orderId },
-      data: {
-        aiCallStatus: "COMPLETED",
-        aiNextCallAt: null,
-      },
+      data: { aiCallStatus: "COMPLETED", aiNextCallAt: null },
     });
 
     revalidatePath("/dashboard/admin/ai-agent");
@@ -282,25 +253,23 @@ export async function cancelAiCalls(orderId: string) {
 // Get human sales reps for assignment dropdown
 // ---------------------------------------------------------------------------
 
-export interface SalesRepOption {
-  id: string;
-  name: string;
-}
-
 export async function getHumanSalesReps(): Promise<SalesRepOption[]> {
-  await requireAdmin();
+  const ctx = await requireOrgContext();
+  if (ctx.role !== "ADMIN" && ctx.role !== "OWNER") throw new Error("Unauthorized");
 
-  const reps = await db.user.findMany({
+  // Use OrganizationMember — role lives on the member, not the User in multi-tenant
+  const members = await db.organizationMember.findMany({
     where: {
+      organizationId: ctx.organizationId,
       role: "SALES_REP",
       isActive: true,
       isAiAgent: false,
     },
-    select: { id: true, name: true },
-    orderBy: { name: "asc" },
+    include: { user: { select: { id: true, name: true } } },
+    orderBy: { user: { name: "asc" } },
   });
 
-  return reps;
+  return members.map((m) => ({ id: m.userId, name: m.user.name ?? "" }));
 }
 
 // ---------------------------------------------------------------------------
@@ -309,26 +278,32 @@ export async function getHumanSalesReps(): Promise<SalesRepOption[]> {
 
 export async function assignToHuman(orderId: string, salesRepId: string) {
   try {
-    await requireAdmin();
+    const ctx = await requireOrgContext();
+    if (ctx.role !== "ADMIN" && ctx.role !== "OWNER") throw new Error("Unauthorized");
 
-    const [order, rep] = await Promise.all([
-      db.order.findUnique({
-        where: { id: orderId },
+    const [order, member] = await Promise.all([
+      db.order.findFirst({
+        where: { id: orderId, organizationId: ctx.organizationId },
         select: { id: true, orderNumber: true, customerName: true },
       }),
-      db.user.findUnique({
-        where: { id: salesRepId },
-        select: { id: true, name: true, isActive: true, isAiAgent: true },
+      db.organizationMember.findFirst({
+        where: {
+          userId: salesRepId,
+          organizationId: ctx.organizationId,
+          role: "SALES_REP",
+        },
+        include: { user: { select: { id: true, name: true } } },
       }),
     ]);
 
     if (!order) return { success: false as const, error: "Order not found" };
-    if (!rep) return { success: false as const, error: "Sales rep not found" };
-    if (!rep.isActive) return { success: false as const, error: "Sales rep is not active" };
-    if (rep.isAiAgent) return { success: false as const, error: "Cannot assign to AI agent" };
+    if (!member) return { success: false as const, error: "Sales rep not found in this org" };
+    if (!member.isActive) return { success: false as const, error: "Sales rep is not active" };
+    if (member.isAiAgent) return { success: false as const, error: "Cannot assign to AI agent" };
+
+    const repName = member.user.name ?? "Unknown";
 
     await db.$transaction([
-      // Reassign the order and remove from AI pipeline
       db.order.update({
         where: { id: orderId },
         data: {
@@ -337,18 +312,17 @@ export async function assignToHuman(orderId: string, salesRepId: string) {
           aiNextCallAt: null,
         },
       }),
-      // Add a note documenting the handoff
       db.orderNote.create({
         data: {
           orderId,
-          note: `Order reassigned from AI agent to ${rep.name} (manual handoff by admin)`,
+          note: `Order reassigned from AI agent to ${repName} (manual handoff by admin)`,
         },
       }),
     ]);
 
-    // Notify the sales rep
     await db.notification.create({
       data: {
+        organizationId: ctx.organizationId,
         userId: salesRepId,
         type: "ORDER_ASSIGNED",
         title: `Order #${order.orderNumber} assigned to you`,
@@ -360,7 +334,7 @@ export async function assignToHuman(orderId: string, salesRepId: string) {
 
     revalidatePath("/dashboard/admin/ai-agent");
     revalidatePath("/dashboard");
-    return { success: true as const, repName: rep.name };
+    return { success: true as const, repName };
   } catch (err) {
     return { success: false as const, error: (err as Error).message };
   }

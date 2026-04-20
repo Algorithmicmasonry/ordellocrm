@@ -1,62 +1,68 @@
 "use server";
 
-import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { headers } from "next/headers";
+import { requireOrgContext } from "@/lib/org-context";
 import { revalidatePath } from "next/cache";
 
-export async function getSandboxOrders() {
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user || session.user.role !== "ADMIN") {
-    return { success: false as const, error: "Unauthorized" };
-  }
+function requireAdmin(role: string) {
+  if (role !== "ADMIN" && role !== "OWNER") throw new Error("Unauthorized");
+}
 
-  const orders = await db.order.findMany({
-    where: { isSandbox: true },
-    include: {
-      assignedTo: { select: { id: true, name: true } },
-      items: {
-        include: {
-          product: { select: { id: true, name: true } },
+export async function getSandboxOrders() {
+  try {
+    const ctx = await requireOrgContext();
+    requireAdmin(ctx.role);
+
+    const orders = await db.order.findMany({
+      where: { organizationId: ctx.organizationId, isSandbox: true },
+      include: {
+        assignedTo: { select: { id: true, name: true } },
+        items: {
+          include: { product: { select: { id: true, name: true } } },
         },
       },
-    },
-    orderBy: { createdAt: "desc" },
-    take: 100,
-  });
+      orderBy: { createdAt: "desc" },
+      take: 100,
+    });
 
-  return { success: true as const, data: orders };
+    return { success: true as const, data: orders };
+  } catch (err) {
+    return { success: false as const, error: (err as Error).message };
+  }
 }
 
 export async function deleteSandboxOrder(orderId: string) {
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user || session.user.role !== "ADMIN") {
-    return { success: false as const, error: "Unauthorized" };
+  try {
+    const ctx = await requireOrgContext();
+    requireAdmin(ctx.role);
+
+    const order = await db.order.findFirst({
+      where: { id: orderId, organizationId: ctx.organizationId, isSandbox: true },
+    });
+
+    if (!order) return { success: false as const, error: "Sandbox order not found" };
+
+    await db.order.delete({ where: { id: orderId } });
+
+    revalidatePath("/dashboard/admin/ai-sandbox");
+    return { success: true as const };
+  } catch (err) {
+    return { success: false as const, error: (err as Error).message };
   }
-
-  // Verify it's actually a sandbox order before deleting
-  const order = await db.order.findFirst({
-    where: { id: orderId, isSandbox: true },
-  });
-
-  if (!order) {
-    return { success: false as const, error: "Sandbox order not found" };
-  }
-
-  await db.order.delete({ where: { id: orderId } });
-
-  revalidatePath("/dashboard/admin/ai-sandbox");
-  return { success: true as const };
 }
 
 export async function deleteAllSandboxOrders() {
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user || session.user.role !== "ADMIN") {
-    return { success: false as const, error: "Unauthorized" };
+  try {
+    const ctx = await requireOrgContext();
+    requireAdmin(ctx.role);
+
+    await db.order.deleteMany({
+      where: { organizationId: ctx.organizationId, isSandbox: true },
+    });
+
+    revalidatePath("/dashboard/admin/ai-sandbox");
+    return { success: true as const };
+  } catch (err) {
+    return { success: false as const, error: (err as Error).message };
   }
-
-  await db.order.deleteMany({ where: { isSandbox: true } });
-
-  revalidatePath("/dashboard/admin/ai-sandbox");
-  return { success: true as const };
 }
