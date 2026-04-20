@@ -10,12 +10,13 @@ import {
   getTimeBuckets,
   getDayLabels,
 } from "@/lib/date-utils";
+import { requireOrgContext } from "@/lib/org-context";
 import type {
   TimePeriod,
   DashboardStats,
   RevenueTrendData,
   TopProduct,
-  RecentOrder,
+  OrderWithRelations,
 } from "@/lib/types";
 
 /**
@@ -25,22 +26,24 @@ export async function getDashboardStats(
   period: TimePeriod = "today",
   currency?: Currency,
   timezone?: string,
-  startDateParam?: string, // ISO string — overrides period when both present
-  endDateParam?: string,   // ISO string — overrides period when both present
+  startDateParam?: string,
+  endDateParam?: string,
 ) {
   try {
+    const ctx = await requireOrgContext();
+    const { organizationId } = ctx;
+
     let startDate: Date, endDate: Date, previousRange: { startDate: Date; endDate: Date } | null;
 
     if (startDateParam && endDateParam) {
       startDate = new Date(startDateParam);
       endDate = new Date(endDateParam);
-      previousRange = null; // no comparison for custom ranges
+      previousRange = null;
     } else {
       ({ startDate, endDate } = getDateRange(period, timezone));
       previousRange = getPreviousPeriodRange(period, timezone);
     }
 
-    // Parallel queries for current period
     const [
       currentRevenue,
       currentProfit,
@@ -51,59 +54,48 @@ export async function getDashboardStats(
       previousProfit,
       previousOrdersCount,
     ] = await Promise.all([
-      // Current period metrics
-      calculateRevenue(startDate, endDate, undefined, currency),
-      calculateProfit(startDate, endDate, undefined, currency),
+      calculateRevenue(startDate, endDate, undefined, currency, organizationId),
+      calculateProfit(startDate, endDate, undefined, currency, organizationId),
       db.order.count({
         where: {
-          createdAt: {
-            gte: startDate,
-            lte: endDate,
-          },
+          organizationId,
+          createdAt: { gte: startDate, lte: endDate },
           ...(currency && { currency }),
         },
       }),
       db.order.count({
         where: {
+          organizationId,
           status: OrderStatus.DELIVERED,
-          createdAt: {
-            gte: startDate,
-            lte: endDate,
-          },
+          createdAt: { gte: startDate, lte: endDate },
           ...(currency && { currency }),
         },
       }),
       db.order.count({
         where: {
+          organizationId,
           status: OrderStatus.CANCELLED,
-          createdAt: {
-            gte: startDate,
-            lte: endDate,
-          },
+          createdAt: { gte: startDate, lte: endDate },
           ...(currency && { currency }),
         },
       }),
-      // Previous period for comparison (null when custom range)
       previousRange
-        ? calculateRevenue(previousRange.startDate, previousRange.endDate, undefined, currency)
+        ? calculateRevenue(previousRange.startDate, previousRange.endDate, undefined, currency, organizationId)
         : Promise.resolve(0),
       previousRange
-        ? calculateProfit(previousRange.startDate, previousRange.endDate, undefined, currency)
+        ? calculateProfit(previousRange.startDate, previousRange.endDate, undefined, currency, organizationId)
         : Promise.resolve(0),
       previousRange
         ? db.order.count({
             where: {
-              createdAt: {
-                gte: previousRange.startDate,
-                lte: previousRange.endDate,
-              },
+              organizationId,
+              createdAt: { gte: previousRange.startDate, lte: previousRange.endDate },
               ...(currency && { currency }),
             },
           })
         : Promise.resolve(0),
     ]);
 
-    // Calculate fulfillment and cancellation rates
     const fulfillmentRate =
       currentOrdersCount > 0
         ? Number(((currentDelivered / currentOrdersCount) * 100).toFixed(1))
@@ -114,16 +106,9 @@ export async function getDashboardStats(
         ? Number(((currentCancelled / currentOrdersCount) * 100).toFixed(1))
         : 0;
 
-    // Calculate percentage changes (null when custom range — no comparison available)
-    const revenueChange = previousRange
-      ? calculatePercentageChange(currentRevenue, previousRevenue)
-      : null;
-    const profitChange = previousRange
-      ? calculatePercentageChange(currentProfit, previousProfit)
-      : null;
-    const ordersChange = previousRange
-      ? calculatePercentageChange(currentOrdersCount, previousOrdersCount)
-      : null;
+    const revenueChange = previousRange ? calculatePercentageChange(currentRevenue, previousRevenue) : null;
+    const profitChange = previousRange ? calculatePercentageChange(currentProfit, previousProfit) : null;
+    const ordersChange = previousRange ? calculatePercentageChange(currentOrdersCount, previousOrdersCount) : null;
 
     const stats: DashboardStats = {
       revenue: currentRevenue,
@@ -137,17 +122,10 @@ export async function getDashboardStats(
       cancelledRate,
     };
 
-    return {
-      success: true,
-      data: stats,
-    };
+    return { success: true, data: stats };
   } catch (error) {
     console.error("Error fetching dashboard stats:", error);
-    return {
-      success: false,
-      error: "Failed to fetch dashboard statistics",
-      data: null,
-    };
+    return { success: false, error: "Failed to fetch dashboard statistics", data: null };
   }
 }
 
@@ -158,11 +136,13 @@ export async function getRevenueTrend(
   period: TimePeriod = "today",
   currency?: Currency,
   timezone?: string,
-  startDateParam?: string, // ISO string — overrides period when both present
-  endDateParam?: string,   // ISO string — overrides period when both present
+  startDateParam?: string,
+  endDateParam?: string,
 ) {
   try {
-    // Custom date range: build one daily bucket per day across the full range
+    const ctx = await requireOrgContext();
+    const { organizationId } = ctx;
+
     if (startDateParam && endDateParam) {
       const startDate = new Date(startDateParam);
       const endDate = new Date(endDateParam);
@@ -175,21 +155,18 @@ export async function getRevenueTrend(
 
       const orders = await db.order.findMany({
         where: {
+          organizationId,
           status: OrderStatus.DELIVERED,
           deliveredAt: { gte: startDate, lte: endDate },
           ...(currency && { currency }),
         },
-        select: {
-          deliveredAt: true,
-          totalAmount: true,
-        },
+        select: { deliveredAt: true, totalAmount: true },
       });
 
       const trendData: RevenueTrendData[] = buckets.map((bucket, index) => {
-        const nextBucket =
-          index < buckets.length - 1
-            ? buckets[index + 1]
-            : new Date(endDate.getTime() + 1);
+        const nextBucket = index < buckets.length - 1
+          ? buckets[index + 1]
+          : new Date(endDate.getTime() + 1);
 
         const revenue = orders
           .filter((o) => o.deliveredAt && o.deliveredAt >= bucket && o.deliveredAt < nextBucket)
@@ -202,112 +179,80 @@ export async function getRevenueTrend(
       return { success: true, data: trendData };
     }
 
-    let startDate: Date, endDate: Date, previousRange: { startDate: Date; endDate: Date } | null;
+    const { startDate, endDate } = getDateRange(period, timezone);
+    const previousRange = getPreviousPeriodRange(period, timezone);
 
-    ({ startDate, endDate } = getDateRange(period, timezone));
-    previousRange = getPreviousPeriodRange(period, timezone);
-
-    // Get time buckets for the period
     const currentBuckets = getTimeBuckets(period, startDate, timezone);
-    const previousBuckets = previousRange
-      ? getTimeBuckets(period, previousRange.startDate, timezone)
-      : [];
+    const previousBuckets = previousRange ? getTimeBuckets(period, previousRange.startDate, timezone) : [];
     const labels = getDayLabels(period);
 
-    // Fetch orders for current period
-    const currentOrders = await db.order.findMany({
-      where: {
-        status: OrderStatus.DELIVERED,
-        deliveredAt: {
-          gte: startDate,
-          lte: endDate,
+    const [currentOrders, previousOrders] = await Promise.all([
+      db.order.findMany({
+        where: {
+          organizationId,
+          status: OrderStatus.DELIVERED,
+          deliveredAt: { gte: startDate, lte: endDate },
+          ...(currency && { currency }),
         },
-        ...(currency && { currency }),
-      },
-      select: {
-        deliveredAt: true,
-        totalAmount: true,
-      },
-    });
-
-    // Fetch orders for previous period (skip when custom range)
-    const previousOrders = previousRange
-      ? await db.order.findMany({
-          where: {
-            status: OrderStatus.DELIVERED,
-            deliveredAt: {
-              gte: previousRange.startDate,
-              lte: previousRange.endDate,
+        select: { deliveredAt: true, totalAmount: true },
+      }),
+      previousRange
+        ? db.order.findMany({
+            where: {
+              organizationId,
+              status: OrderStatus.DELIVERED,
+              deliveredAt: { gte: previousRange.startDate, lte: previousRange.endDate },
+              ...(currency && { currency }),
             },
-            ...(currency && { currency }),
-          },
-          select: {
-            deliveredAt: true,
-            totalAmount: true,
-          },
-        })
-      : [];
-
-    // Helper function to group orders by time bucket
-    const groupOrdersByBucket = (
-      orders: typeof currentOrders,
-      buckets: Date[],
-    ) => {
-      return buckets.map((bucket, index) => {
-        const nextBucket =
-          index < buckets.length - 1
-            ? buckets[index + 1]
-            : new Date(bucket.getTime() + 24 * 60 * 60 * 1000);
-
-        const revenue = orders
-          .filter((order) => {
-            const orderDate = order.deliveredAt;
-            return orderDate && orderDate >= bucket && orderDate < nextBucket;
+            select: { deliveredAt: true, totalAmount: true },
           })
-          .reduce((sum, order) => sum + order.totalAmount, 0);
+        : Promise.resolve([]),
+    ]);
 
-        return revenue;
+    const groupOrdersByBucket = (orders: typeof currentOrders, buckets: Date[]) =>
+      buckets.map((bucket, index) => {
+        const nextBucket = index < buckets.length - 1
+          ? buckets[index + 1]
+          : new Date(bucket.getTime() + 24 * 60 * 60 * 1000);
+
+        return orders
+          .filter((o) => o.deliveredAt && o.deliveredAt >= bucket && o.deliveredAt < nextBucket)
+          .reduce((sum, o) => sum + o.totalAmount, 0);
       });
-    };
 
     const currentRevenues = groupOrdersByBucket(currentOrders, currentBuckets);
     const previousRevenues = previousBuckets.length > 0
       ? groupOrdersByBucket(previousOrders, previousBuckets)
       : [];
 
-    // Format data for chart
     const trendData: RevenueTrendData[] = labels.map((label, index) => ({
       label,
       current: currentRevenues[index] || 0,
       previous: previousRevenues[index] || 0,
     }));
 
-    return {
-      success: true,
-      data: trendData,
-    };
+    return { success: true, data: trendData };
   } catch (error) {
     console.error("Error fetching revenue trend:", error);
-    return {
-      success: false,
-      error: "Failed to fetch revenue trend",
-      data: null,
-    };
+    return { success: false, error: "Failed to fetch revenue trend", data: null };
   }
 }
 
 /**
- * Get top selling products by revenue
+ * Get top selling products by revenue (scoped to org)
  */
 export async function getTopProducts(
   period: TimePeriod = "today",
   limit: number = 3,
   currency?: Currency,
   timezone?: string,
-  startDateParam?: string, // ISO string — overrides period when both present
-  endDateParam?: string,   // ISO string — overrides period when both present
+  startDateParam?: string,
+  endDateParam?: string,
 ) {
   try {
+    const ctx = await requireOrgContext();
+    const { organizationId } = ctx;
+
     let startDate: Date, endDate: Date;
 
     if (startDateParam && endDateParam) {
@@ -317,14 +262,11 @@ export async function getTopProducts(
       ({ startDate, endDate } = getDateRange(period, timezone));
     }
 
-    // Get delivered orders with items in the period
     const orders = await db.order.findMany({
       where: {
+        organizationId,
         status: OrderStatus.DELIVERED,
-        deliveredAt: {
-          gte: startDate,
-          lte: endDate,
-        },
+        deliveredAt: { gte: startDate, lte: endDate },
         ...(currency && { currency }),
       },
       select: {
@@ -333,41 +275,23 @@ export async function getTopProducts(
             productId: true,
             price: true,
             quantity: true,
-            product: {
-              select: {
-                id: true,
-                name: true,
-                description: true,
-              },
-            },
+            product: { select: { id: true, name: true, description: true } },
           },
         },
       },
     });
 
-    // Aggregate revenue by product
-    const productMap = new Map<
-      string,
-      {
-        id: string;
-        name: string;
-        description: string | null;
-        revenue: number;
-        ordersCount: number;
-      }
-    >();
+    const productMap = new Map<string, { id: string; name: string; description: string | null; revenue: number; ordersCount: number }>();
 
     orders.forEach((order) => {
       order.items.forEach((item) => {
-        const productId = item.productId;
         const revenue = item.price * item.quantity;
-
-        if (productMap.has(productId)) {
-          const existing = productMap.get(productId)!;
+        if (productMap.has(item.productId)) {
+          const existing = productMap.get(item.productId)!;
           existing.revenue += revenue;
           existing.ordersCount += 1;
         } else {
-          productMap.set(productId, {
+          productMap.set(item.productId, {
             id: item.product.id,
             name: item.product.name,
             description: item.product.description,
@@ -378,54 +302,36 @@ export async function getTopProducts(
       });
     });
 
-    // Convert to array and sort by revenue
     const topProducts: TopProduct[] = Array.from(productMap.values())
       .sort((a, b) => b.revenue - a.revenue)
       .slice(0, limit);
 
-    return {
-      success: true,
-      data: topProducts,
-    };
+    return { success: true, data: topProducts };
   } catch (error) {
     console.error("Error fetching top products:", error);
-    return {
-      success: false,
-      error: "Failed to fetch top products",
-      data: null,
-    };
+    return { success: false, error: "Failed to fetch top products", data: null };
   }
 }
 
 /**
- * Get recent orders for display
+ * Get recent orders for display (scoped to org)
  */
-import type { OrderWithRelations } from "@/lib/types";
-
 export async function getRecentOrders(limit: number = 5) {
+  const ctx = await requireOrgContext();
+
   const orders = await db.order.findMany({
+    where: { organizationId: ctx.organizationId },
     take: limit,
     orderBy: { createdAt: "desc" },
     include: {
-      assignedTo: {
-        select: { id: true, name: true, email: true },
-      },
-      agent: {
-        select: { id: true, name: true, location: true },
-      },
+      assignedTo: { select: { id: true, name: true, email: true } },
+      agent: { select: { id: true, name: true, location: true } },
       items: {
-        include: {
-          product: {
-            select: { id: true, name: true, price: true },
-          },
-        },
+        include: { product: { select: { id: true, name: true, price: true } } },
       },
       notes: true,
     },
   });
 
-  return {
-    success: true,
-    data: orders as OrderWithRelations[],
-  };
+  return { success: true, data: orders as OrderWithRelations[] };
 }

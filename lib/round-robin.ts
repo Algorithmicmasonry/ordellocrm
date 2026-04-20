@@ -1,79 +1,73 @@
 import { db } from './db'
 
-const ROUND_ROBIN_KEY = 'last_assigned_sales_rep_index'
+const ROUND_ROBIN_KEY = 'round_robin_index'
 
 /**
- * Get the next sales rep in round-robin order
- * This ensures fair distribution of orders among all active sales reps
+ * Get the next sales rep in round-robin order for a specific org.
+ * Queries OrganizationMember instead of User — role and isActive live there.
  */
-export async function getNextSalesRep(excludeUserId?: string): Promise<string | null> {
-  // When VAPI_ENABLED is not "true", exclude the AI agent from round-robin so
-  // live orders only go to human reps. Flipping VAPI_ENABLED=true brings the
-  // AI agent back into rotation automatically.
-  const vapiEnabled = process.env.VAPI_ENABLED === "true";
+export async function getNextSalesRep(
+  excludeUserId?: string,
+  organizationId?: string,
+): Promise<string | null> {
+  if (!organizationId) return null
 
-  const salesReps = await db.user.findMany({
+  const vapiEnabled = process.env.VAPI_ENABLED === "true"
+
+  // Get active SALES_REP members of this org
+  const members = await db.organizationMember.findMany({
     where: {
+      organizationId,
       role: 'SALES_REP',
       isActive: true,
       ...(!vapiEnabled ? { isAiAgent: false } : {}),
-      ...(excludeUserId ? { id: { not: excludeUserId } } : {}),
+      ...(excludeUserId ? { userId: { not: excludeUserId } } : {}),
     },
-    orderBy: {
-      name: 'asc', // Alphabetical ordering to match UI
-    },
+    include: { user: { select: { id: true, name: true } } },
+    orderBy: { user: { name: 'asc' } }, // Alphabetical to match UI
   })
 
-  if (salesReps.length === 0) {
-    return null
-  }
+  if (members.length === 0) return null
 
-  // Atomically increment the index using a single SQL upsert.
-  // This prevents race conditions where two simultaneous submissions
-  // read the same index and both assign to the same rep.
+  // Atomically increment the index using raw SQL.
+  // The unique constraint is (organizationId, key) in Ordello.
   const result = await db.$queryRaw<Array<{ value: string }>>`
-    INSERT INTO system_settings (id, key, value, "updatedAt")
-    VALUES (gen_random_uuid()::text, ${ROUND_ROBIN_KEY}, '0', NOW())
-    ON CONFLICT (key) DO UPDATE
-    SET value = ((CAST(system_settings.value AS INTEGER) + 1) % ${salesReps.length})::text,
+    INSERT INTO system_settings (id, key, "organizationId", value, "updatedAt")
+    VALUES (gen_random_uuid()::text, ${ROUND_ROBIN_KEY}, ${organizationId}, '0', NOW())
+    ON CONFLICT ("organizationId", key) DO UPDATE
+    SET value = ((CAST(system_settings.value AS INTEGER) + 1) % ${members.length})::text,
         "updatedAt" = NOW()
     RETURNING value
   `
 
   const currentIndex = parseInt(result[0].value)
-  const rep = salesReps[currentIndex]
+  const member = members[currentIndex]
 
-  if (!rep) {
-    // Rep list shrank between findMany and the SQL increment (e.g. rep deactivated mid-flight).
-    // Return null so the caller saves the order unassigned instead of crashing.
-    console.warn(`[getNextSalesRep] Index ${currentIndex} out of bounds for ${salesReps.length} reps — saving order unassigned`)
+  if (!member) {
+    console.warn(`[getNextSalesRep] Index ${currentIndex} out of bounds for ${members.length} members — saving order unassigned`)
     return null
   }
 
-  return rep.id
+  return member.userId
 }
 
 /**
- * Reset the round-robin counter (useful when sales reps are added/removed)
+ * Reset the round-robin counter for a specific org
  */
-export async function resetRoundRobin(): Promise<void> {
+export async function resetRoundRobin(organizationId: string): Promise<void> {
   await db.systemSetting.upsert({
-    where: { key: ROUND_ROBIN_KEY },
+    where: { organizationId_key: { organizationId, key: ROUND_ROBIN_KEY } },
     update: { value: '0' },
-    create: {
-      key: ROUND_ROBIN_KEY,
-      value: '0',
-    },
+    create: { organizationId, key: ROUND_ROBIN_KEY, value: '0' },
   })
 }
 
 /**
- * Get the current round-robin index without incrementing it
+ * Get the current round-robin index for a specific org without incrementing
  */
-export async function getCurrentRoundRobinIndex(): Promise<number> {
+export async function getCurrentRoundRobinIndex(organizationId: string): Promise<number> {
   const setting = await db.systemSetting.findUnique({
-    where: { key: ROUND_ROBIN_KEY },
+    where: { organizationId_key: { organizationId, key: ROUND_ROBIN_KEY } },
   })
-
   return setting ? parseInt(setting.value) : 0
 }

@@ -12,32 +12,24 @@ export async function calculateRevenue(
   startDate?: Date,
   endDate?: Date,
   salesRepId?: string,
-  currency?: Currency
+  currency?: Currency,
+  organizationId?: string,
 ): Promise<number> {
   const where: any = {
     status: OrderStatus.DELIVERED,
+    ...(organizationId && { organizationId }),
   }
 
   if (startDate && endDate) {
-    where.deliveredAt = {
-      gte: startDate,
-      lte: endDate,
-    }
+    where.deliveredAt = { gte: startDate, lte: endDate }
   }
 
-  if (salesRepId) {
-    where.assignedToId = salesRepId
-  }
-
-  if (currency) {
-    where.currency = currency
-  }
+  if (salesRepId) where.assignedToId = salesRepId
+  if (currency) where.currency = currency
 
   const orders = await db.order.findMany({
     where,
-    select: {
-      totalAmount: true,
-    },
+    select: { totalAmount: true },
   })
 
   return orders.reduce((total, order) => total + order.totalAmount, 0)
@@ -50,24 +42,20 @@ export async function calculateProfit(
   startDate?: Date,
   endDate?: Date,
   productId?: string,
-  currency?: Currency
+  currency?: Currency,
+  organizationId?: string,
 ): Promise<number> {
   const where: any = {
     status: OrderStatus.DELIVERED,
+    ...(organizationId && { organizationId }),
   }
 
   if (startDate && endDate) {
-    where.deliveredAt = {
-      gte: startDate,
-      lte: endDate,
-    }
+    where.deliveredAt = { gte: startDate, lte: endDate }
   }
 
-  if (currency) {
-    where.currency = currency
-  }
+  if (currency) where.currency = currency
 
-  // Get delivered orders
   const orders = await db.order.findMany({
     where,
     include: {
