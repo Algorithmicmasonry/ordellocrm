@@ -2,49 +2,30 @@
 
 import * as Sentry from "@sentry/nextjs";
 import { db } from "@/lib/db";
-import { auth } from "@/lib/auth";
-import { headers } from "next/headers";
+import { requireOrgContext } from "@/lib/org-context";
 import { revalidatePath } from "next/cache";
 import { restoreInventoryFromDelivery } from "@/lib/calculations";
 
+function requireAdmin(role: string) {
+  if (role !== "ADMIN" && role !== "OWNER") throw new Error("Unauthorized");
+}
+
 export async function getOrderDetails(orderId: string) {
   try {
-    const session = await auth.api.getSession({ headers: await headers() });
+    const ctx = await requireOrgContext();
+    requireAdmin(ctx.role);
 
-    if (!session?.user || session.user.role !== "ADMIN") {
-      return { success: false, error: "Unauthorized" };
-    }
-
-    // Fetch order with all relations
-    const order = await db.order.findUnique({
-      where: {
-        id: orderId,
-      },
+    const order = await db.order.findFirst({
+      where: { id: orderId, organizationId: ctx.organizationId },
       include: {
-        items: {
-          include: {
-            product: true,
-          },
-        },
-        notes: {
-          orderBy: {
-            createdAt: "desc",
-          },
-        },
+        items: { include: { product: true } },
+        notes: { orderBy: { createdAt: "desc" } },
         agent: true,
-        assignedTo: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-          },
-        },
+        assignedTo: { select: { id: true, name: true, email: true } },
       },
     });
 
-    if (!order) {
-      return { success: false, error: "Order not found" };
-    }
+    if (!order) return { success: false, error: "Order not found" };
 
     return { success: true, data: order };
   } catch (error) {
@@ -55,20 +36,18 @@ export async function getOrderDetails(orderId: string) {
 
 export async function deleteOrder(orderId: string) {
   try {
-    const session = await auth.api.getSession({ headers: await headers() });
+    const ctx = await requireOrgContext();
+    requireAdmin(ctx.role);
 
-    if (!session?.user || session.user.role !== "ADMIN") {
-      return { success: false, error: "Unauthorized" };
-    }
-
-    // If the order was delivered, restore inventory before deleting
-    const order = await db.order.findUnique({
-      where: { id: orderId },
+    const order = await db.order.findFirst({
+      where: { id: orderId, organizationId: ctx.organizationId },
       select: { status: true },
     });
 
-    if (order?.status === "DELIVERED") {
-      await restoreInventoryFromDelivery(orderId, session.user.id);
+    if (!order) return { success: false, error: "Order not found" };
+
+    if (order.status === "DELIVERED") {
+      await restoreInventoryFromDelivery(orderId, ctx.userId);
     }
 
     await db.order.delete({ where: { id: orderId } });
