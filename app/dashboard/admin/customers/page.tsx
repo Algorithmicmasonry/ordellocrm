@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import { CustomersClient } from "./_components";
 import { Skeleton } from "@/components/ui/skeleton";
 import { db } from "@/lib/db";
+import { requireOrgContext } from "@/lib/org-context";
 import {
   getDateRange,
   getPreviousPeriodRange,
@@ -14,7 +15,7 @@ interface CustomersPageProps {
   searchParams: Promise<{ period?: string; currency?: Currency; tz?: string; startDate?: string; endDate?: string }>;
 }
 
-async function getCustomersData(period: TimePeriod = "month", currency?: Currency, timezone?: string, startDateParam?: string, endDateParam?: string) {
+async function getCustomersData(organizationId: string, period: TimePeriod = "month", currency?: Currency, timezone?: string, startDateParam?: string, endDateParam?: string) {
   const { startDate, endDate } = (startDateParam && endDateParam)
     ? { startDate: new Date(startDateParam), endDate: new Date(endDateParam) }
     : getDateRange(period, timezone);
@@ -25,6 +26,7 @@ async function getCustomersData(period: TimePeriod = "month", currency?: Currenc
   // Fetch orders from both current and previous periods for trend calculation
   const orders = await db.order.findMany({
     where: {
+      organizationId,
       createdAt: {
         gte: previousRange ? previousRange.startDate : startDate,
         lte: endDate,
@@ -241,13 +243,14 @@ async function getCustomersData(period: TimePeriod = "month", currency?: Currenc
 export default async function CustomersPage({
   searchParams,
 }: CustomersPageProps) {
+  const ctx = await requireOrgContext();
   const params = await searchParams;
   const period = (params?.period || "month") as TimePeriod;
   const currency = params?.currency;
   const timezone = params?.tz;
   const startDate = params?.startDate;
   const endDate = params?.endDate;
-  const data = await getCustomersData(period, currency, timezone, startDate, endDate);
+  const data = await getCustomersData(ctx.organizationId, period, currency, timezone, startDate, endDate);
 
   return (
     <Suspense fallback={<CustomersPageSkeleton />}>

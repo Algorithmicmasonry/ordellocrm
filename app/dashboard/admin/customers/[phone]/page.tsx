@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { db } from "@/lib/db";
+import { requireOrgContext } from "@/lib/org-context";
 import { CustomerDetailsClient } from "./_components";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Metadata } from "next";
@@ -10,7 +11,7 @@ interface CustomerDetailPageProps {
   searchParams: Promise<{ startDate?: string; endDate?: string }>;
 }
 
-async function getCustomerDetails(phone: string, startDateParam?: string, endDateParam?: string) {
+async function getCustomerDetails(organizationId: string, phone: string, startDateParam?: string, endDateParam?: string) {
   // Build date filter when custom range is provided
   const dateFilter = (startDateParam && endDateParam)
     ? { gte: new Date(startDateParam), lte: new Date(endDateParam) }
@@ -19,6 +20,7 @@ async function getCustomerDetails(phone: string, startDateParam?: string, endDat
   // Fetch all orders for this customer (optionally filtered by date range)
   const orders = await db.order.findMany({
     where: {
+      organizationId,
       customerPhone: phone,
       ...(dateFilter && { createdAt: dateFilter }),
     },
@@ -214,11 +216,12 @@ export default async function CustomerDetailPage({
   params,
   searchParams,
 }: CustomerDetailPageProps) {
+  const ctx = await requireOrgContext();
   const { phone } = await params;
   const query = await searchParams;
   const decodedPhone = decodeURIComponent(phone);
 
-  const customerData = await getCustomerDetails(decodedPhone, query?.startDate, query?.endDate);
+  const customerData = await getCustomerDetails(ctx.organizationId, decodedPhone, query?.startDate, query?.endDate);
 
   if (!customerData) {
     notFound();
@@ -270,10 +273,11 @@ export async function generateMetadata({
 }: {
   params: Promise<{ phone: string }>;
 }): Promise<Metadata> {
+  const ctx = await requireOrgContext();
   const { phone } = await params;
   const decodedPhone = decodeURIComponent(phone);
 
-  const customerData = await getCustomerDetails(decodedPhone);
+  const customerData = await getCustomerDetails(ctx.organizationId, decodedPhone);
 
   return {
     title: customerData
