@@ -1,14 +1,14 @@
 "use server";
+
 import { db } from "@/lib/db";
-import { auth } from "@/lib/auth";
-import { headers } from "next/headers";
 import { revalidatePath, revalidateTag } from "next/cache";
 import { logStockMovement } from "@/lib/stock-movements";
+import { requireOrgContext } from "@/lib/org-context";
 import type { Currency } from "@prisma/client";
 
-/**
- * Create a new product (Admin only)
- */
+// ---------------------------------------------------------------------------
+// createProduct — ADMIN + INVENTORY_MANAGER only
+// ---------------------------------------------------------------------------
 export async function createProduct(data: {
   name: string;
   description?: string;
@@ -21,106 +21,64 @@ export async function createProduct(data: {
   isActive?: boolean;
 }) {
   try {
-    // Authorization: ADMIN and INVENTORY_MANAGER only
-    const session = await auth.api.getSession({ headers: await headers() });
-    if (!session?.user) {
-      return { success: false, error: "Unauthorized" };
-    }
+    const ctx = await requireOrgContext();
 
-    const user = await db.user.findUnique({ where: { id: session.user.id } });
-    if (user?.role !== "ADMIN" && user?.role !== "INVENTORY_MANAGER") {
+    if (ctx.role !== "ADMIN" && ctx.role !== "OWNER" && ctx.role !== "INVENTORY_MANAGER") {
       return { success: false, error: "Insufficient permissions" };
     }
 
-    // Check if SKU is provided and already exists
+    // SKU uniqueness check is per-org (not global)
     if (data.sku) {
-      const existingProduct = await db.product.findUnique({
-        where: { sku: data.sku },
-        select: { id: true, name: true, sku: true },
+      const existingProduct = await db.product.findFirst({
+        where: { organizationId: ctx.organizationId, sku: data.sku },
+        select: { id: true, name: true },
       });
-
       if (existingProduct) {
         return {
           success: false,
-          error: `SKU "${data.sku}" is already in use by "${existingProduct.name}". Please use a different SKU.`,
+          error: `SKU "${data.sku}" is already in use by "${existingProduct.name}".`,
         };
       }
     }
 
-    // Create the product and its price entry in a transaction
     const product = await db.$transaction(async (tx) => {
-      // Extract pricing data from the input
       const { price, cost, currency = "NGN", ...productData } = data;
 
-      // Create the product WITHOUT the deprecated price/cost fields
       const newProduct = await tx.product.create({
         data: {
           ...productData,
-          currency, // Keep currency as it's the primary currency
+          organizationId: ctx.organizationId,
+          currency,
           currentStock: data.openingStock,
           reorderPoint: data.reorderPoint ?? 0,
           isActive: data.isActive ?? true,
-          // Deprecated fields - explicitly set to null (not used)
           price: null,
           cost: null,
         },
       });
 
-      // Create the ProductPrice entry - SINGLE SOURCE OF TRUTH for pricing
       await tx.productPrice.create({
-        data: {
-          productId: newProduct.id,
-          currency,
-          price,
-          cost,
-        },
+        data: { productId: newProduct.id, currency, price, cost },
       });
 
       return newProduct;
     });
 
-    revalidatePath("/admin/products");
     revalidatePath("/dashboard/admin/inventory");
     revalidatePath("/dashboard/inventory");
-
     return { success: true, product };
   } catch (error: any) {
     console.error("Error creating product:", error);
-
-    // Handle Prisma unique constraint errors
     if (error.code === "P2002") {
-      const target = error.meta?.target;
-
-      if (target?.includes("sku")) {
-        return {
-          success: false,
-          error: "This SKU is already in use. Please choose a different one.",
-        };
-      }
-
-      if (target?.includes("name")) {
-        return {
-          success: false,
-          error: "A product with this name already exists.",
-        };
-      }
-
-      return {
-        success: false,
-        error: "A product with these details already exists.",
-      };
+      return { success: false, error: "A product with these details already exists." };
     }
-
-    // Handle other potential errors
-    return {
-      success: false,
-      error: "Failed to create product. Please try again.",
-    };
+    return { success: false, error: "Failed to create product. Please try again." };
   }
 }
-/**
- * Update product (Admin only)
- */
+
+// ---------------------------------------------------------------------------
+// updateProduct — ADMIN + INVENTORY_MANAGER only
+// ---------------------------------------------------------------------------
 export async function updateProduct(
   productId: string,
   data: {
@@ -134,67 +92,44 @@ export async function updateProduct(
   },
 ) {
   try {
-    // Authorization: ADMIN and INVENTORY_MANAGER only
-    const session = await auth.api.getSession({ headers: await headers() });
-    if (!session?.user) {
-      return { success: false, error: "Unauthorized" };
-    }
+    const ctx = await requireOrgContext();
 
-    const user = await db.user.findUnique({ where: { id: session.user.id } });
-    if (user?.role !== "ADMIN" && user?.role !== "INVENTORY_MANAGER") {
+    if (ctx.role !== "ADMIN" && ctx.role !== "OWNER" && ctx.role !== "INVENTORY_MANAGER") {
       return { success: false, error: "Insufficient permissions" };
     }
 
-    // Get current product to know the currency
     const currentProduct = await db.product.findUnique({
-      where: { id: productId },
+      where: { id: productId, organizationId: ctx.organizationId },
       select: { currency: true },
     });
 
-    if (!currentProduct) {
-      return { success: false, error: "Product not found" };
-    }
+    if (!currentProduct) return { success: false, error: "Product not found" };
 
     const product = await db.$transaction(async (tx) => {
-      // Extract pricing data from the input
       const { price, cost, currency, ...productDataWithoutPricing } = data;
 
-      // Update the product WITHOUT the deprecated price/cost fields
       const updatedProduct = await tx.product.update({
         where: { id: productId },
         data: {
           ...productDataWithoutPricing,
-          // Only update currency if provided (it's the primary currency)
           ...(currency && { currency }),
         },
       });
 
-      // If price, cost, or currency were updated, update ProductPrice table (SINGLE SOURCE OF TRUTH)
       if (price !== undefined || cost !== undefined || currency !== undefined) {
         const targetCurrency = currency || currentProduct.currency;
         const currentPrice = await tx.productPrice.findUnique({
-          where: {
-            productId_currency: {
-              productId: productId,
-              currency: targetCurrency,
-            },
-          },
+          where: { productId_currency: { productId, currency: targetCurrency } },
         });
 
-        // Upsert the ProductPrice entry
         await tx.productPrice.upsert({
-          where: {
-            productId_currency: {
-              productId: productId,
-              currency: targetCurrency,
-            },
-          },
+          where: { productId_currency: { productId, currency: targetCurrency } },
           update: {
             ...(price !== undefined && { price }),
             ...(cost !== undefined && { cost }),
           },
           create: {
-            productId: productId,
+            productId,
             currency: targetCurrency,
             price: price ?? currentPrice?.price ?? 0,
             cost: cost ?? currentPrice?.cost ?? 0,
@@ -205,12 +140,10 @@ export async function updateProduct(
       return updatedProduct;
     });
 
-    revalidatePath("/admin/products");
     revalidatePath("/dashboard/admin/inventory");
     revalidatePath("/dashboard/inventory");
     revalidatePath(`/dashboard/admin/inventory/${productId}/pricing`);
-    revalidateTag("products", {}); // Bust embed form product cache immediately
-
+    revalidateTag("products");
     return { success: true, product };
   } catch (error) {
     console.error("Error updating product:", error);
@@ -218,43 +151,40 @@ export async function updateProduct(
   }
 }
 
-/**
- * Add stock to product (Admin and Inventory Manager)
- */
+// ---------------------------------------------------------------------------
+// addStock — ADMIN + INVENTORY_MANAGER only
+// ---------------------------------------------------------------------------
 export async function addStock(productId: string, quantity: number) {
   try {
-    // Authorization: ADMIN and INVENTORY_MANAGER only
-    const session = await auth.api.getSession({ headers: await headers() });
-    if (!session?.user) {
-      return { success: false, error: "Unauthorized" };
-    }
+    const ctx = await requireOrgContext();
 
-    const user = await db.user.findUnique({ where: { id: session.user.id } });
-    if (user?.role !== "ADMIN" && user?.role !== "INVENTORY_MANAGER") {
+    if (ctx.role !== "ADMIN" && ctx.role !== "OWNER" && ctx.role !== "INVENTORY_MANAGER") {
       return { success: false, error: "Insufficient permissions" };
     }
 
+    // Verify product belongs to this org
+    const exists = await db.product.findUnique({
+      where: { id: productId, organizationId: ctx.organizationId },
+      select: { id: true },
+    });
+    if (!exists) return { success: false, error: "Product not found" };
+
     const product = await db.product.update({
       where: { id: productId },
-      data: {
-        currentStock: {
-          increment: quantity,
-        },
-      },
+      data: { currentStock: { increment: quantity } },
     });
 
     await logStockMovement({
       productId,
+      organizationId: ctx.organizationId,
       type: "STOCK_ADDED",
       quantity,
       balanceAfter: product.currentStock,
-      userId: session.user.id,
+      userId: ctx.userId,
     });
 
-    revalidatePath("/admin/products");
     revalidatePath("/dashboard/admin/inventory");
     revalidatePath("/dashboard/inventory");
-
     return { success: true, product };
   } catch (error) {
     console.error("Error adding stock:", error);
@@ -262,15 +192,16 @@ export async function addStock(productId: string, quantity: number) {
   }
 }
 
-/**
- * Get all products
- */
+// ---------------------------------------------------------------------------
+// getAllProducts — scoped to org
+// ---------------------------------------------------------------------------
 export async function getAllProducts() {
   try {
+    const ctx = await requireOrgContext();
+
     const products = await db.product.findMany({
-      orderBy: {
-        createdAt: "desc",
-      },
+      where: { organizationId: ctx.organizationId, isDeleted: false },
+      orderBy: { createdAt: "desc" },
     });
 
     return { success: true, products };
@@ -280,15 +211,13 @@ export async function getAllProducts() {
   }
 }
 
-/**
- * Get active products (for order form)
- */
-export async function getActiveProducts() {
+// ---------------------------------------------------------------------------
+// getActiveProducts — for order form, scoped to org
+// ---------------------------------------------------------------------------
+export async function getActiveProducts(organizationId: string) {
   try {
     const allProducts = await db.product.findMany({
-      where: {
-        isActive: true,
-      },
+      where: { organizationId, isActive: true, isDeleted: false },
       select: {
         id: true,
         name: true,
@@ -296,19 +225,15 @@ export async function getActiveProducts() {
         currency: true,
         productPrices: true,
       },
-      orderBy: {
-        name: "asc",
-      },
+      orderBy: { name: "asc" },
     });
 
-    // Only return products with valid pricing
     const products = allProducts
       .map((product) => {
         const productPrice = product.productPrices.find(
-          (p) => p.currency === product.currency
+          (p) => p.currency === product.currency,
         );
         if (!productPrice) return null;
-
         return {
           id: product.id,
           name: product.name,
@@ -325,49 +250,30 @@ export async function getActiveProducts() {
   }
 }
 
-/**
- * Soft delete a product (Admin and Inventory Manager)
- */
+// ---------------------------------------------------------------------------
+// softDeleteProduct — ADMIN + INVENTORY_MANAGER only
+// ---------------------------------------------------------------------------
 export async function softDeleteProduct(productId: string) {
   try {
-    // Authorization: ADMIN and INVENTORY_MANAGER only
-    const session = await auth.api.getSession({ headers: await headers() });
-    if (!session?.user) {
-      return { success: false, error: "Unauthorized" };
-    }
+    const ctx = await requireOrgContext();
 
-    const user = await db.user.findUnique({ where: { id: session.user.id } });
-    if (user?.role !== "ADMIN" && user?.role !== "INVENTORY_MANAGER") {
+    if (ctx.role !== "ADMIN" && ctx.role !== "OWNER" && ctx.role !== "INVENTORY_MANAGER") {
       return { success: false, error: "Insufficient permissions" };
     }
 
-    // Check if product exists
     const product = await db.product.findUnique({
-      where: { id: productId },
-      include: {
-        orders: {
-          take: 1,
-        },
-      },
+      where: { id: productId, organizationId: ctx.organizationId },
     });
 
-    if (!product) {
-      return { success: false, error: "Product not found" };
-    }
+    if (!product) return { success: false, error: "Product not found" };
 
-    // Soft delete the product
     const updatedProduct = await db.product.update({
       where: { id: productId },
-      data: {
-        isDeleted: true,
-        deletedAt: new Date(),
-      },
+      data: { isDeleted: true, deletedAt: new Date() },
     });
 
-    revalidatePath("/admin/products");
     revalidatePath("/dashboard/admin/inventory");
-    revalidateTag("products", {}); // Bust embed form product cache immediately
-
+    revalidateTag("products");
     return { success: true, product: updatedProduct };
   } catch (error) {
     console.error("Error deleting product:", error);
@@ -375,17 +281,16 @@ export async function softDeleteProduct(productId: string) {
   }
 }
 
-/**
- * Get product with its active packages (for order form)
- */
-export async function getProductWithPackages(productId: string) {
+// ---------------------------------------------------------------------------
+// getProductWithPackages — for order form, scoped to org
+// ---------------------------------------------------------------------------
+export async function getProductWithPackages(
+  productId: string,
+  organizationId: string,
+) {
   try {
     const product = await db.product.findUnique({
-      where: {
-        id: productId,
-        isActive: true,
-        isDeleted: false,
-      },
+      where: { id: productId, organizationId, isActive: true, isDeleted: false },
       include: {
         packages: {
           where: { isActive: true },
@@ -404,13 +309,8 @@ export async function getProductWithPackages(productId: string) {
       },
     });
 
-    if (!product) {
-      return { success: false, error: "Product not found" };
-    }
-
-    if (product.packages.length === 0) {
-      return { success: false, error: "Product has no available packages" };
-    }
+    if (!product) return { success: false, error: "Product not found" };
+    if (product.packages.length === 0) return { success: false, error: "Product has no available packages" };
 
     return { success: true, data: product };
   } catch (error) {
@@ -419,53 +319,36 @@ export async function getProductWithPackages(productId: string) {
   }
 }
 
-/**
- * Update package selector note for a product (Admin only)
- */
+// ---------------------------------------------------------------------------
+// updatePackageSelectorNote — ADMIN only
+// ---------------------------------------------------------------------------
 export async function updatePackageSelectorNote(
   productId: string,
-  note: string | null
+  note: string | null,
 ) {
   try {
-    // Authorization: ADMIN only
-    const session = await auth.api.getSession({ headers: await headers() });
-    if (!session?.user) {
-      return { success: false, error: "Unauthorized" };
-    }
+    const ctx = await requireOrgContext();
 
-    const user = await db.user.findUnique({ where: { id: session.user.id } });
-    if (user?.role !== "ADMIN") {
+    if (ctx.role !== "ADMIN" && ctx.role !== "OWNER") {
       return { success: false, error: "Insufficient permissions" };
     }
 
-    // Check if product exists
     const product = await db.product.findUnique({
-      where: { id: productId, isDeleted: false },
+      where: { id: productId, organizationId: ctx.organizationId, isDeleted: false },
     });
 
-    if (!product) {
-      return { success: false, error: "Product not found" };
-    }
+    if (!product) return { success: false, error: "Product not found" };
 
-    // Update the package selector note
     const updatedProduct = await db.product.update({
       where: { id: productId },
-      data: {
-        packageSelectorNote: note,
-      },
+      data: { packageSelectorNote: note },
     });
 
     revalidatePath(`/dashboard/admin/inventory/${productId}/packages`);
-    revalidatePath("/order-form");
-    revalidatePath("/order-form/embed");
-    revalidateTag("products", {}); // Bust embed form product cache immediately
-
+    revalidateTag("products");
     return { success: true, product: updatedProduct };
   } catch (error) {
     console.error("Error updating package selector note:", error);
-    return {
-      success: false,
-      error: "Failed to update package selector note",
-    };
+    return { success: false, error: "Failed to update package selector note" };
   }
 }

@@ -15,23 +15,50 @@ import { createNotification, createBulkNotifications } from "./notifications";
 import { determineOrderSource, formatUTMSource } from "@/lib/utm-parser";
 import { triggerOutboundCall } from "@/lib/vapi";
 import { formatCurrency } from "@/lib/currency";
+import { requireOrgContext } from "@/lib/org-context";
 
-/**
- * Create a new order from the embedded form
- * Automatically assigns to sales rep using round-robin
- */
-export async function createOrder(data: OrderFormData) {
-  // Declared outside try so revalidatePath runs even if notifications glitch
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/** Get admin user IDs within an org (OWNER + ADMIN roles) */
+async function getOrgAdminIds(organizationId: string): Promise<string[]> {
+  const members = await db.organizationMember.findMany({
+    where: { organizationId, role: { in: ["OWNER", "ADMIN"] }, isActive: true },
+    select: { userId: true },
+  });
+  return members.map((m) => m.userId);
+}
+
+/** Check if a member is the AI agent within an org */
+async function isMemberAiAgent(
+  organizationId: string,
+  userId: string,
+): Promise<boolean> {
+  const member = await db.organizationMember.findUnique({
+    where: { organizationId_userId: { organizationId, userId } },
+    select: { isAiAgent: true },
+  });
+  return member?.isAiAgent ?? false;
+}
+
+// ---------------------------------------------------------------------------
+// createOrder — public order form (V1)
+// organizationId identifies which org's form was submitted
+// ---------------------------------------------------------------------------
+export async function createOrder(
+  data: OrderFormData,
+  organizationId: string,
+) {
   let savedOrder: Awaited<ReturnType<typeof db.order.create>> | null = null;
 
   try {
-    // Get next sales rep in round-robin (may be null if no active reps)
-    const assignedToId = await getNextSalesRep();
+    const assignedToId = await getNextSalesRep(undefined, organizationId);
 
-    // Duplicate detection: if same phone submitted an order in the last 2 minutes, silently ignore
     const twoMinutesAgo = new Date(Date.now() - 2 * 60 * 1000);
     const recentDuplicate = await db.order.findFirst({
       where: {
+        organizationId,
         customerPhone: data.customerPhone,
         createdAt: { gte: twoMinutesAgo },
       },
@@ -42,39 +69,27 @@ export async function createOrder(data: OrderFormData) {
       return { success: true, order: recentDuplicate, duplicate: true };
     }
 
-    // Calculate total amount
     let totalAmount = 0;
     const orderItems: Prisma.OrderItemCreateWithoutOrderInput[] = [];
 
     for (const item of data.items) {
       const product = await db.product.findUnique({
         where: { id: item.productId },
-        include: {
-          productPrices: true,
-        },
+        include: { productPrices: true },
       });
 
-      if (!product) {
-        return {
-          success: false,
-          error: `Product not found: ${item.productId}`,
-        };
+      if (!product || product.organizationId !== organizationId) {
+        return { success: false, error: `Product not found: ${item.productId}` };
       }
 
-      // Get pricing for the product's primary currency
       const productPrice = product.productPrices.find(
         (p) => p.currency === product.currency,
       );
-
       if (!productPrice) {
-        return {
-          success: false,
-          error: `Pricing not configured for product: ${product.name}`,
-        };
+        return { success: false, error: `Pricing not configured for product: ${product.name}` };
       }
 
       totalAmount += productPrice.price * item.quantity;
-
       orderItems.push({
         product: { connect: { id: product.id } },
         quantity: item.quantity,
@@ -83,10 +98,10 @@ export async function createOrder(data: OrderFormData) {
       });
     }
 
-    // Create order with items — withRetry handles Neon cold-start timeouts
     savedOrder = await withRetry(() =>
       db.order.create({
         data: {
+          organizationId,
           customerName: data.customerName,
           customerPhone: data.customerPhone,
           customerWhatsapp: data.customerWhatsapp,
@@ -95,13 +110,9 @@ export async function createOrder(data: OrderFormData) {
           city: data.city,
           source: data.source,
           totalAmount,
-          ...(assignedToId
-            ? { assignedTo: { connect: { id: assignedToId } } }
-            : {}),
+          ...(assignedToId ? { assignedTo: { connect: { id: assignedToId } } } : {}),
           status: OrderStatus.NEW,
-          items: {
-            create: orderItems,
-          },
+          items: { create: orderItems },
         },
         include: {
           items: { include: { product: true } },
@@ -110,7 +121,6 @@ export async function createOrder(data: OrderFormData) {
       }),
     );
 
-    // Fire notifications without letting failures affect order confirmation
     try {
       if (assignedToId) {
         await notifySalesRep(assignedToId, {
@@ -121,6 +131,7 @@ export async function createOrder(data: OrderFormData) {
         });
         await createNotification({
           userId: assignedToId,
+          organizationId,
           type: "ORDER_ASSIGNED",
           title: "New Order Assigned",
           message: `Order ${savedOrder.orderNumber} from ${savedOrder.customerName} (${savedOrder.customerPhone}) has been assigned to you`,
@@ -128,69 +139,49 @@ export async function createOrder(data: OrderFormData) {
           orderId: savedOrder.id,
         });
       } else {
-        // No sales reps available — alert all admins to assign manually
-        console.warn(
-          `[createOrder] Order #${savedOrder.orderNumber} saved unassigned — alerting admins`,
-        );
-        const admins = await db.user.findMany({
-          where: { role: "ADMIN", isActive: true },
-          select: { id: true },
-        });
+        const adminIds = await getOrgAdminIds(organizationId);
         await createBulkNotifications({
-          userIds: admins.map((a) => a.id),
+          userIds: adminIds,
+          organizationId,
           type: "NEW_ORDER",
           title: "⚠️ Unassigned Order Received",
-          message: `Order ${savedOrder.orderNumber} from ${savedOrder.customerName} (${savedOrder.customerPhone}) has no sales rep assigned. Please assign manually.`,
+          message: `Order ${savedOrder.orderNumber} from ${savedOrder.customerName} has no sales rep assigned.`,
           link: `/dashboard/admin/orders/${savedOrder.id}`,
-          orderId: savedOrder.id,
-        });
-        await notifyAdmins({
-          title: `⚠️ Unassigned Order #${savedOrder.orderNumber}`,
-          body: `No sales reps available. Please assign manually.`,
-          url: `/dashboard/admin/orders/${savedOrder.id}`,
           orderId: savedOrder.id,
         });
       }
     } catch (notifyErr) {
-      Sentry.captureException(notifyErr, {
-        extra: { orderNumber: savedOrder.orderNumber },
-      });
+      Sentry.captureException(notifyErr, { extra: { orderNumber: savedOrder.orderNumber } });
     }
   } catch (error) {
     Sentry.captureException(error);
-    return {
-      success: false,
-      error: "Failed to create order",
-    };
+    return { success: false, error: "Failed to create order" };
   }
 
-  // revalidatePath is outside the try-catch so a DB-saved order always
-  // returns success: true even in the (very unlikely) event revalidatePath throws.
   revalidatePath("/dashboard");
-  revalidatePath("/admin");
-
+  revalidatePath("/dashboard/admin/orders");
   return { success: true, order: savedOrder! };
 }
 
-/**
- * Create a new order from the V2 embedded form (with packages and UTM tracking)
- * Automatically assigns to sales rep using round-robin
- */
-export async function createOrderV2(data: OrderFormDataV2) {
-  const logPrefix = `[createOrderV2] name="${data.customerName}" phone=${data.customerPhone} whatsapp=${data.customerWhatsapp ?? "none"} address="${data.deliveryAddress}" city=${data.city} state=${data.state} product=${data.productId} packages=${JSON.stringify(data.selectedPackages)} currency=${data.currency} utmSource=${data.utmParams?.source ?? "none"} referrer=${data.referrer ?? "none"}`;
+// ---------------------------------------------------------------------------
+// createOrderV2 — public order form (V2, with packages + UTM)
+// ---------------------------------------------------------------------------
+export async function createOrderV2(
+  data: OrderFormDataV2 & { organizationId: string },
+) {
+  const { organizationId } = data;
+  const logPrefix = `[createOrderV2] org=${organizationId} name="${data.customerName}" phone=${data.customerPhone}`;
   console.log(`${logPrefix} | START`);
 
-  // Declared outside so revalidatePath runs even if an unlikely error occurs after save
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let savedOrder: any = null;
 
   try {
-    // Duplicate detection FIRST (before round-robin) — prevents wasting a slot on duplicates
-    // Uses a serializable transaction to block concurrent duplicate submissions
     const twoMinutesAgo = new Date(Date.now() - 2 * 60 * 1000);
     const recentDuplicate = await withRetry(() =>
       db.order.findFirst({
         where: {
+          organizationId,
           customerPhone: data.customerPhone,
           createdAt: { gte: twoMinutesAgo },
         },
@@ -199,162 +190,99 @@ export async function createOrderV2(data: OrderFormDataV2) {
     );
 
     if (recentDuplicate) {
-      console.log(
-        `${logPrefix} | DUPLICATE detected orderNumber=${recentDuplicate.orderNumber} — returning early`,
-      );
+      console.log(`${logPrefix} | DUPLICATE detected — returning early`);
       return { success: true, order: recentDuplicate, duplicate: true };
     }
 
-    // Determine assignment: GHS orders go directly to Ghana manager; NGN orders use round-robin
+    // Assignment: sandbox → AI agent, GHS → Ghana manager, else → round-robin
     const ghanaManagerSetting = await withRetry(() =>
-      db.systemSetting.findUnique({ where: { key: "ghana_manager_id" } }),
+      db.systemSetting.findUnique({
+        where: { organizationId_key: { organizationId, key: "ghana_manager_id" } },
+      }),
     );
     const ghanaManagerId = ghanaManagerSetting?.value ?? null;
 
     let assignedToId: string | null;
 
     if (data.isSandbox) {
-      // Sandbox orders bypass round-robin and go directly to the AI agent
       const aiAgentSetting = await withRetry(() =>
-        db.systemSetting.findUnique({ where: { key: "ai_agent_user_id" } }),
+        db.systemSetting.findUnique({
+          where: { organizationId_key: { organizationId, key: "ai_agent_user_id" } },
+        }),
       );
       const aiAgentId = aiAgentSetting?.value ?? null;
       if (!aiAgentId) {
-        return {
-          success: false,
-          error: "No AI agent is configured. Go to User Management and designate an AI agent first.",
-        };
+        return { success: false, error: "No AI agent is configured." };
       }
-      const aiAgent = await db.user.findFirst({
-        where: { id: aiAgentId, isActive: true, isAiAgent: true },
+      const aiMember = await db.organizationMember.findUnique({
+        where: { organizationId_userId: { organizationId, userId: aiAgentId } },
+        select: { isAiAgent: true, isActive: true },
       });
-      if (!aiAgent) {
-        return {
-          success: false,
-          error: "The configured AI agent account is inactive or no longer exists.",
-        };
+      if (!aiMember?.isActive || !aiMember?.isAiAgent) {
+        return { success: false, error: "AI agent account is inactive or no longer exists." };
       }
       assignedToId = aiAgentId;
-      console.log(`${logPrefix} | SANDBOX — assigned directly to AI agent id=${aiAgentId}`);
+      console.log(`${logPrefix} | SANDBOX — assigned to AI agent id=${aiAgentId}`);
     } else if (data.currency === "GHS" && ghanaManagerId) {
-      // Verify Ghana manager account is still active
-      const ghanaManager = await db.user.findFirst({
-        where: { id: ghanaManagerId, isActive: true },
+      const ghanaActive = await db.organizationMember.findUnique({
+        where: { organizationId_userId: { organizationId, userId: ghanaManagerId } },
+        select: { isActive: true },
       });
-      assignedToId = ghanaManager ? ghanaManagerId : await getNextSalesRep();
-      console.log(
-        `${logPrefix} | GHS order → ghana-manager assignedToId=${assignedToId ?? "NONE"}`,
-      );
+      assignedToId = ghanaActive?.isActive ? ghanaManagerId : await getNextSalesRep(ghanaManagerId, organizationId);
     } else {
-      // Nigerian order — round-robin, excluding Ghana manager so they don't get NGN orders
-      assignedToId = await getNextSalesRep(ghanaManagerId ?? undefined);
-      console.log(
-        `${logPrefix} | round-robin assignedToId=${assignedToId ?? "NONE — order will be saved unassigned"}`,
-      );
+      assignedToId = await getNextSalesRep(ghanaManagerId ?? undefined, organizationId);
     }
 
-    // Get product, packages, and pricing (filter by currency)
-    console.log(
-      `${logPrefix} | fetching product + packages selectedPackages=${JSON.stringify(data.selectedPackages)}`,
-    );
+    console.log(`${logPrefix} | fetching product + packages`);
     const product = await db.product.findUnique({
       where: { id: data.productId },
       include: {
         packages: {
-          where: {
-            id: { in: data.selectedPackages },
-            isActive: true,
-            currency: data.currency,
-          },
+          where: { id: { in: data.selectedPackages }, isActive: true, currency: data.currency },
           include: {
             components: {
               include: {
-                product: {
-                  include: {
-                    productPrices: {
-                      where: { currency: data.currency },
-                    },
-                  },
-                },
+                product: { include: { productPrices: { where: { currency: data.currency } } } },
               },
               orderBy: { createdAt: "asc" },
             },
           },
         },
-        productPrices: {
-          where: {
-            currency: data.currency,
-          },
-        },
+        productPrices: { where: { currency: data.currency } },
       },
     });
 
-    if (!product) {
-      console.error(`${logPrefix} | ABORT product not found`);
-      return {
-        success: false,
-        error: "Product not found",
-      };
+    if (!product || product.organizationId !== organizationId) {
+      return { success: false, error: "Product not found" };
     }
-
-    console.log(
-      `${logPrefix} | product="${product.name}" packagesFound=${product.packages.length} pricesFound=${product.productPrices.length}`,
-    );
 
     if (product.packages.length === 0) {
-      console.error(
-        `${logPrefix} | ABORT no packages for currency=${data.currency}`,
-      );
-      return {
-        success: false,
-        error: `No packages available for ${data.currency}. Please select a different currency or contact support.`,
-      };
+      return { success: false, error: `No packages available for ${data.currency}.` };
     }
 
-    // Get product cost from ProductPrice table
     const productPrice = product.productPrices[0];
     if (!productPrice) {
-      console.error(
-        `${logPrefix} | ABORT no ProductPrice for currency=${data.currency}`,
-      );
-      return {
-        success: false,
-        error: `Pricing not configured for ${data.currency}. Please contact support.`,
-      };
+      return { success: false, error: `Pricing not configured for ${data.currency}.` };
     }
 
-    // Calculate total amount and create order items
     let totalAmount = 0;
     const orderItems: Prisma.OrderItemCreateWithoutOrderInput[] = [];
 
     for (const pkg of product.packages) {
       totalAmount += pkg.price;
-
-      // Store unit price (package price / quantity) so that quantity × price = package price
       const unitPrice = pkg.price / pkg.quantity;
-
       orderItems.push({
         product: { connect: { id: product.id } },
         quantity: pkg.quantity,
-        price: unitPrice, // Price per unit in package
-        cost: productPrice.cost, // Cost per unit from ProductPrice table
+        price: unitPrice,
+        cost: productPrice.cost,
       });
 
-      // Companion products are tracked as separate order items for stock/cost.
-      // They are priced at 0 so package price remains the customer-facing total.
       for (const component of pkg.components) {
         const companionPrice = component.product.productPrices[0];
-
         if (!companionPrice) {
-          console.error(
-            `${logPrefix} | ABORT missing companion pricing for product="${component.product.name}" currency=${data.currency}`,
-          );
-          return {
-            success: false,
-            error: `Pricing not configured for companion product: ${component.product.name} (${data.currency})`,
-          };
+          return { success: false, error: `Pricing not configured for companion product: ${component.product.name}` };
         }
-
         orderItems.push({
           product: { connect: { id: component.productId } },
           quantity: component.quantity,
@@ -364,37 +292,21 @@ export async function createOrderV2(data: OrderFormDataV2) {
       }
     }
 
-    console.log(
-      `${logPrefix} | totalAmount=${totalAmount} items=${orderItems.length}`,
-    );
-
-    // Determine order source from UTM/referrer
-    const utmSource = data.utmParams
-      ? formatUTMSource(data.utmParams)
-      : undefined;
+    const utmSource = data.utmParams ? formatUTMSource(data.utmParams) : undefined;
     const orderSource = determineOrderSource(utmSource, data.referrer);
-    console.log(
-      `${logPrefix} | source=${orderSource} utmSource=${utmSource ?? "none"} referrer=${data.referrer ?? "none"}`,
-    );
 
-    // Create order inside a transaction — re-checks for duplicate at insert time
-    // to prevent race conditions from near-simultaneous form submissions
     console.log(`${logPrefix} | creating order in DB...`);
     const txResult = await withRetry(() =>
       db.$transaction(async (tx) => {
-        // Second duplicate check inside the transaction (catches concurrent submits)
         const concurrentDuplicate = await tx.order.findFirst({
-          where: {
-            customerPhone: data.customerPhone,
-            createdAt: { gte: twoMinutesAgo },
-          },
+          where: { organizationId, customerPhone: data.customerPhone, createdAt: { gte: twoMinutesAgo } },
           select: { id: true, orderNumber: true },
         });
-        if (concurrentDuplicate)
-          return { duplicate: true, order: concurrentDuplicate };
+        if (concurrentDuplicate) return { duplicate: true, order: concurrentDuplicate };
 
         const order = await tx.order.create({
           data: {
+            organizationId,
             customerName: data.customerName,
             customerPhone: data.customerPhone,
             customerWhatsapp: data.customerWhatsapp,
@@ -411,13 +323,9 @@ export async function createOrderV2(data: OrderFormDataV2) {
             referrer: data.referrer,
             totalAmount,
             isSandbox: data.isSandbox ?? false,
-            ...(assignedToId
-              ? { assignedTo: { connect: { id: assignedToId } } }
-              : {}),
+            ...(assignedToId ? { assignedTo: { connect: { id: assignedToId } } } : {}),
             status: OrderStatus.NEW,
-            items: {
-              create: orderItems,
-            },
+            items: { create: orderItems },
           },
           include: {
             items: { include: { product: true } },
@@ -429,19 +337,13 @@ export async function createOrderV2(data: OrderFormDataV2) {
     );
 
     if (txResult.duplicate) {
-      console.log(
-        `${logPrefix} | CONCURRENT DUPLICATE detected orderNumber=${txResult.order.orderNumber} — returning early`,
-      );
       return { success: true, order: txResult.order, duplicate: true };
     }
 
     savedOrder = txResult.order;
+    console.log(`${logPrefix} | ORDER SAVED orderNumber=${savedOrder.orderNumber}`);
 
-    console.log(
-      `${logPrefix} | ORDER SAVED orderNumber=${savedOrder.orderNumber} id=${savedOrder.id} assignedTo=${savedOrder.assignedTo?.name ?? "UNASSIGNED"}`,
-    );
-
-    // Fire notifications without letting failures affect order confirmation
+    // Notifications
     try {
       if (assignedToId) {
         await notifySalesRep(assignedToId, {
@@ -452,88 +354,46 @@ export async function createOrderV2(data: OrderFormDataV2) {
         });
         await createNotification({
           userId: assignedToId,
+          organizationId,
           type: "ORDER_ASSIGNED",
           title: "New Order Assigned",
           message: `Order ${savedOrder.orderNumber} from ${savedOrder.customerName} (${savedOrder.customerPhone}) - ${formatCurrency(savedOrder.totalAmount, data.currency)}`,
           link: `/dashboard/sales-rep/orders/${savedOrder.id}`,
           orderId: savedOrder.id,
         });
-      } else {
-        console.warn(
-          `${logPrefix} | ORDER UNASSIGNED — notifying admins for manual assignment`,
-        );
       }
-      const admins = await db.user.findMany({
-        where: { role: "ADMIN", isActive: true },
-        select: { id: true, name: true },
-      });
-      const adminTitle = assignedToId
-        ? "New Order Received"
-        : "⚠️ Unassigned Order Received";
-      const adminMessage = assignedToId
-        ? `Order ${savedOrder.orderNumber} from ${savedOrder.customerName} (${savedOrder.customerPhone}) - ${formatCurrency(savedOrder.totalAmount, data.currency)}`
-        : `Order ${savedOrder.orderNumber} from ${savedOrder.customerName} (${savedOrder.customerPhone}) has no sales rep assigned. Please assign manually.`;
+
+      const adminIds = await getOrgAdminIds(organizationId);
       await createBulkNotifications({
-        userIds: admins.map((a) => a.id),
+        userIds: adminIds,
+        organizationId,
         type: "NEW_ORDER",
-        title: adminTitle,
-        message: adminMessage,
+        title: assignedToId ? `New Order #${savedOrder.orderNumber}` : `⚠️ Unassigned Order #${savedOrder.orderNumber}`,
+        message: `Order ${savedOrder.orderNumber} from ${savedOrder.customerName} (${savedOrder.customerPhone}) - ${formatCurrency(savedOrder.totalAmount, data.currency)}`,
         link: `/dashboard/admin/orders/${savedOrder.id}`,
         orderId: savedOrder.id,
       });
-      await notifyAdmins({
-        title: assignedToId
-          ? `New Order #${savedOrder.orderNumber}`
-          : `⚠️ Unassigned Order #${savedOrder.orderNumber}`,
-        body: assignedToId
-          ? `Order from ${savedOrder.customerName} - ${formatCurrency(savedOrder.totalAmount, data.currency)}`
-          : `No sales reps available. Please assign manually.`,
-        url: `/dashboard/admin/orders/${savedOrder.id}`,
-        orderId: savedOrder.id,
-      });
-      console.log(
-        `${logPrefix} | notifications sent for orderNumber=${savedOrder.orderNumber}`,
-      );
     } catch (notifyErr) {
-      Sentry.captureException(notifyErr, {
-        extra: {
-          context: `${logPrefix} | notification failed`,
-          orderNumber: savedOrder.orderNumber,
-        },
-      });
+      Sentry.captureException(notifyErr, { extra: { orderNumber: savedOrder.orderNumber } });
     }
 
-    // If the order was assigned to the AI agent, initialise AI fields and fire attempt 1
+    // AI agent trigger
     if (assignedToId) {
       try {
-        const assignedUser = await db.user.findUnique({
-          where: { id: assignedToId },
-          select: { isAiAgent: true },
-        });
-
+        const isAiAgent = await isMemberAiAgent(organizationId, assignedToId);
         const vapiEnabled = process.env.VAPI_ENABLED === "true";
-        if (assignedUser?.isAiAgent && (vapiEnabled || savedOrder.isSandbox)) {
-          const cycleStartAt = new Date();
 
-          // Mark order as PENDING (cron uses this; we'll flip to IN_PROGRESS on call fire)
+        if (isAiAgent && (vapiEnabled || savedOrder.isSandbox)) {
           await db.order.update({
             where: { id: savedOrder.id },
-            data: {
-              aiCallStatus: "PENDING",
-              aiCycleNumber: 1,
-              aiCycleStartAt: cycleStartAt,
-            },
+            data: { aiCallStatus: "PENDING", aiCycleNumber: 1, aiCycleStartAt: new Date() },
           });
 
-          // Build product/package description from items for the AI prompt
-          const mainProductName =
-            savedOrder.items[0]?.product.name ?? "your product";
+          const mainProductName = savedOrder.items[0]?.product.name ?? "your product";
           const packageDescription = (savedOrder.items as Array<{ quantity: number; product: { name: string } }>)
             .map((item) => `${item.quantity}x ${item.product.name}`)
             .join(", ");
 
-          // Trigger attempt 1 — awaited so Vercel doesn't terminate the function
-          // before the HTTP request to Vapi completes.
           try {
             await triggerOutboundCall(
               {
@@ -552,123 +412,81 @@ export async function createOrderV2(data: OrderFormDataV2) {
                 aiCallAttempts: 1,
                 aiCycleNumber: 1,
               },
-              1,
-              1,
-              "confirmation",
+              1, 1, "confirmation",
             );
-            console.log(
-              `${logPrefix} | AI agent assigned — attempt 1 fired for orderNumber=${savedOrder.orderNumber}`,
-            );
+            console.log(`${logPrefix} | AI call attempt 1 fired`);
           } catch (err) {
-            Sentry.captureException(err, {
-              extra: {
-                context: `${logPrefix} | AI call attempt 1 failed — scheduling retry in 5 min`,
-                orderNumber: savedOrder.orderNumber,
-              },
-            });
+            Sentry.captureException(err);
             console.error(`${logPrefix} | AI call attempt 1 failed:`, err);
-            // Write aiNextCallAt = now + 5 min so the cron picks it up shortly
-            try {
-              await db.order.update({
-                where: { id: savedOrder.id },
-                data: { aiNextCallAt: new Date(Date.now() + 5 * 60 * 1000) },
-              });
-            } catch {
-              // If the DB update also fails, Sentry already has the original error
-            }
+            await db.order.update({
+              where: { id: savedOrder.id },
+              data: { aiNextCallAt: new Date(Date.now() + 5 * 60 * 1000) },
+            }).catch(() => {});
           }
         }
       } catch (aiErr) {
-        // AI trigger failure must never fail the order creation response
-        Sentry.captureException(aiErr, {
-          extra: {
-            context: `${logPrefix} | AI agent setup failed`,
-            orderNumber: savedOrder.orderNumber,
-          },
-        });
+        Sentry.captureException(aiErr);
       }
     }
   } catch (error) {
     Sentry.captureException(error, { extra: { context: logPrefix } });
-    return {
-      success: false,
-      error: "Failed to create order",
-    };
+    return { success: false, error: "Failed to create order" };
   }
 
-  // revalidatePath is outside the try-catch: a DB-saved order always returns success: true
-  // even in the (very unlikely) event that revalidatePath itself throws.
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/admin");
   revalidatePath("/dashboard/admin/orders");
-
   console.log(`${logPrefix} | SUCCESS orderNumber=${savedOrder!.orderNumber}`);
   return { success: true, order: savedOrder! };
 }
 
-/**
- * Update order status (Sales Rep & Admin)
- */
+// ---------------------------------------------------------------------------
+// updateOrderStatus
+// ---------------------------------------------------------------------------
 export async function updateOrderStatus(
   orderId: string,
   status: OrderStatus,
-  userId: string,
-  userRole: string,
 ) {
   try {
+    const ctx = await requireOrgContext();
+
     const order = await db.order.findUnique({
-      where: { id: orderId },
+      where: { id: orderId, organizationId: ctx.organizationId },
       include: { assignedTo: true },
     });
 
-    if (!order) {
-      return { success: false, error: "Order not found" };
-    }
+    if (!order) return { success: false, error: "Order not found" };
 
-    // Sales reps can only update their own orders
-    if (userRole === "SALES_REP" && order.assignedToId !== userId) {
+    if (ctx.role === "SALES_REP" && order.assignedToId !== ctx.userId) {
       return { success: false, error: "Unauthorized" };
     }
 
     const updateData: any = { status };
 
-    // Update timestamps based on status
-    if (status === OrderStatus.CONFIRMED) {
-      updateData.confirmedAt = new Date();
-    } else if (status === OrderStatus.DISPATCHED) {
-      updateData.dispatchedAt = new Date();
-    } else if (status === OrderStatus.DELIVERED) {
-      updateData.deliveredAt = new Date();
-      // Deduct inventory on delivery
-      await updateInventoryOnDelivery(orderId, userId);
-    } else if (status === OrderStatus.CANCELLED) {
-      updateData.cancelledAt = new Date();
-    }
+    if (status === OrderStatus.CONFIRMED) updateData.confirmedAt = new Date();
+    else if (status === OrderStatus.DISPATCHED) updateData.dispatchedAt = new Date();
+    else if (status === OrderStatus.DELIVERED) updateData.deliveredAt = new Date();
+    else if (status === OrderStatus.CANCELLED) updateData.cancelledAt = new Date();
 
     const updatedOrder = await db.order.update({
       where: { id: orderId },
       data: updateData,
       include: {
-        items: {
-          include: {
-            product: true,
-          },
-        },
+        items: { include: { product: true } },
         assignedTo: true,
         agent: true,
       },
     });
 
-    // Check for low stock on all products in the order when delivered
-    if (status === OrderStatus.DELIVERED) {
+    if (status === OrderStatus.DELIVERED && order.status !== OrderStatus.DELIVERED) {
+      await updateInventoryOnDelivery(orderId, ctx.userId);
       for (const item of updatedOrder.items) {
         await checkAndNotifyLowStock(item.productId);
       }
     }
 
     revalidatePath("/dashboard");
-    revalidatePath("/admin");
-
+    revalidatePath("/dashboard/admin/orders");
     return { success: true, order: updatedOrder };
   } catch (error) {
     Sentry.captureException(error);
@@ -676,40 +494,43 @@ export async function updateOrderStatus(
   }
 }
 
-/**
- * Assign agent to order (Sales Rep & Admin)
- */
+// ---------------------------------------------------------------------------
+// assignAgentToOrder
+// ---------------------------------------------------------------------------
 export async function assignAgentToOrder(
   orderId: string,
   agentId: string,
-  userId: string,
-  userRole: string,
 ) {
   try {
+    const ctx = await requireOrgContext();
+
     const order = await db.order.findUnique({
-      where: { id: orderId },
+      where: { id: orderId, organizationId: ctx.organizationId },
     });
 
-    if (!order) {
-      return { success: false, error: "Order not found" };
+    if (!order) return { success: false, error: "Order not found" };
+
+    if (ctx.role === "SALES_REP" && order.assignedToId !== ctx.userId) {
+      return { success: false, error: "Unauthorized" };
     }
 
-    // Sales reps can only update their own orders
-    if (userRole === "SALES_REP" && order.assignedToId !== userId) {
-      return { success: false, error: "Unauthorized" };
+    // Verify agent belongs to this org
+    const agent = await db.agent.findUnique({
+      where: { id: agentId },
+      select: { organizationId: true },
+    });
+    if (!agent || agent.organizationId !== ctx.organizationId) {
+      return { success: false, error: "Agent not found" };
     }
 
     const updatedOrder = await db.order.update({
       where: { id: orderId },
       data: { agentId },
-      include: {
-        agent: true,
-      },
+      include: { agent: true },
     });
 
     revalidatePath("/dashboard");
-    revalidatePath("/admin");
-
+    revalidatePath("/dashboard/admin/orders");
     return { success: true, order: updatedOrder };
   } catch (error) {
     Sentry.captureException(error);
@@ -717,43 +538,34 @@ export async function assignAgentToOrder(
   }
 }
 
-/**
- * Add note to order
- */
+// ---------------------------------------------------------------------------
+// addOrderNote
+// ---------------------------------------------------------------------------
 export async function addOrderNote(
   orderId: string,
   note: string,
   isFollowUp: boolean,
   followUpDate: Date | null,
-  userId: string,
-  userRole: string,
 ) {
   try {
+    const ctx = await requireOrgContext();
+
     const order = await db.order.findUnique({
-      where: { id: orderId },
+      where: { id: orderId, organizationId: ctx.organizationId },
     });
 
-    if (!order) {
-      return { success: false, error: "Order not found" };
-    }
+    if (!order) return { success: false, error: "Order not found" };
 
-    // Sales reps can only add notes to their own orders
-    if (userRole === "SALES_REP" && order.assignedToId !== userId) {
+    if (ctx.role === "SALES_REP" && order.assignedToId !== ctx.userId) {
       return { success: false, error: "Unauthorized" };
     }
 
     const orderNote = await db.orderNote.create({
-      data: {
-        orderId,
-        note,
-        isFollowUp,
-        followUpDate,
-      },
+      data: { orderId, note, isFollowUp, followUpDate },
     });
 
     revalidatePath("/dashboard");
-    revalidatePath("/admin");
-
+    revalidatePath("/dashboard/admin/orders");
     return { success: true, note: orderNote };
   } catch (error) {
     Sentry.captureException(error);
@@ -761,29 +573,21 @@ export async function addOrderNote(
   }
 }
 
-/**
- * Get orders for sales rep
- */
-export async function getSalesRepOrders(salesRepId: string) {
+// ---------------------------------------------------------------------------
+// getSalesRepOrders
+// ---------------------------------------------------------------------------
+export async function getSalesRepOrders() {
   try {
+    const ctx = await requireOrgContext();
+
     const orders = await db.order.findMany({
-      where: { assignedToId: salesRepId },
+      where: { organizationId: ctx.organizationId, assignedToId: ctx.userId },
       include: {
-        items: {
-          include: {
-            product: true,
-          },
-        },
+        items: { include: { product: true } },
         agent: true,
-        notes: {
-          orderBy: {
-            createdAt: "desc",
-          },
-        },
+        notes: { orderBy: { createdAt: "desc" } },
       },
-      orderBy: {
-        createdAt: "desc",
-      },
+      orderBy: { createdAt: "desc" },
     });
 
     return { success: true, orders };
@@ -793,29 +597,26 @@ export async function getSalesRepOrders(salesRepId: string) {
   }
 }
 
-/**
- * Get all orders (Admin only)
- */
+// ---------------------------------------------------------------------------
+// getAllOrders — Admin only
+// ---------------------------------------------------------------------------
 export async function getAllOrders() {
   try {
+    const ctx = await requireOrgContext();
+
+    if (ctx.role !== "ADMIN" && ctx.role !== "OWNER") {
+      return { success: false, error: "Unauthorized" };
+    }
+
     const orders = await db.order.findMany({
+      where: { organizationId: ctx.organizationId },
       include: {
-        items: {
-          include: {
-            product: true,
-          },
-        },
+        items: { include: { product: true } },
         assignedTo: true,
         agent: true,
-        notes: {
-          orderBy: {
-            createdAt: "desc",
-          },
-        },
+        notes: { orderBy: { createdAt: "desc" } },
       },
-      orderBy: {
-        createdAt: "desc",
-      },
+      orderBy: { createdAt: "desc" },
     });
 
     return { success: true, orders };
@@ -824,5 +625,3 @@ export async function getAllOrders() {
     return { success: false, error: "Failed to fetch orders" };
   }
 }
-
-// lib/queries/orders.ts
