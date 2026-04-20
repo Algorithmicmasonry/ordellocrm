@@ -2,40 +2,23 @@
  * Vapi Webhook Handler
  *
  * Receives two types of events from Vapi:
- *
- * 1. "tool-calls" — the AI assistant invoked a tool during a live call.
- *    We execute the tool (DB update, notification, etc.) and return results
- *    so the AI can continue the conversation.
- *
- * 2. "end-of-call-report" — the call has ended. We persist the transcript,
- *    record the outcome, schedule retries if unanswered, and optionally
- *    trigger a WhatsApp follow-up.
+ * 1. "tool-calls" — AI invoked a tool during a live call
+ * 2. "end-of-call-report" — call ended; persist transcript, schedule retries
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import * as Sentry from "@sentry/nextjs";
 import { db } from "@/lib/db";
 import { scheduleNextCall } from "@/lib/vapi";
-import {
-  getWhatsAppMessage,
-  type CallOutcome,
-  type CallStage,
-} from "@/lib/ai-agent";
+import { getWhatsAppMessage, type CallOutcome, type CallStage } from "@/lib/ai-agent";
 import { createNotification, createBulkNotifications } from "@/app/actions/notifications";
 import { getAvailableAgents, buildDeliveryAssignmentMessage } from "@/lib/agent-matcher";
 import { revalidatePath } from "next/cache";
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
 interface VapiToolCall {
   id: string;
   type: string;
-  function: {
-    name: string;
-    arguments: Record<string, unknown>;
-  };
+  function: { name: string; arguments: Record<string, unknown> };
 }
 
 interface CallMetadata {
@@ -47,22 +30,14 @@ interface CallMetadata {
 
 interface VapiMessage {
   type: string;
-  call?: {
-    id?: string;
-    metadata?: CallMetadata;
-  };
+  call?: { id?: string; metadata?: CallMetadata };
   toolCallList?: VapiToolCall[];
-  // end-of-call-report fields
   endedReason?: string;
   transcript?: string;
   summary?: string;
   recordingUrl?: string;
   durationSeconds?: number;
 }
-
-// ---------------------------------------------------------------------------
-// POST handler
-// ---------------------------------------------------------------------------
 
 export async function POST(req: NextRequest) {
   let body: VapiMessage;
@@ -76,16 +51,11 @@ export async function POST(req: NextRequest) {
   const messageType = body.type;
 
   try {
-    if (messageType === "tool-calls") {
-      return await handleToolCalls(body);
-    }
-
+    if (messageType === "tool-calls") return await handleToolCalls(body);
     if (messageType === "end-of-call-report") {
       await handleEndOfCallReport(body);
       return NextResponse.json({ ok: true });
     }
-
-    // Other message types (status-update, transcript, etc.) — acknowledge
     return NextResponse.json({ ok: true });
   } catch (error) {
     Sentry.captureException(error, {
@@ -97,7 +67,7 @@ export async function POST(req: NextRequest) {
 }
 
 // ---------------------------------------------------------------------------
-// Tool-calls handler
+// Tool-calls handler — fetches order once to get organizationId
 // ---------------------------------------------------------------------------
 
 async function handleToolCalls(body: VapiMessage) {
@@ -113,6 +83,13 @@ async function handleToolCalls(body: VapiMessage) {
       })),
     });
   }
+
+  // Fetch org context from the order once — passed to tools that need it
+  const orderBase = await db.order.findUnique({
+    where: { id: orderId },
+    select: { organizationId: true },
+  });
+  const organizationId = orderBase?.organizationId;
 
   const results = [];
 
@@ -145,18 +122,16 @@ async function handleToolCalls(body: VapiMessage) {
           result = await toolRequestWhatsApp(orderId, args, metadata);
           break;
         case "reportDeliveryDispute":
-          result = await toolReportDeliveryDispute(orderId, args);
+          result = await toolReportDeliveryDispute(orderId, args, organizationId);
           break;
         case "assignToDeliveryAgent":
-          result = await toolAssignToDeliveryAgent(orderId, args);
+          result = await toolAssignToDeliveryAgent(orderId, args, organizationId);
           break;
         default:
           result = `Unknown tool: ${fnName}`;
       }
     } catch (err) {
-      Sentry.captureException(err, {
-        extra: { tool: fnName, orderId, args },
-      });
+      Sentry.captureException(err, { extra: { tool: fnName, orderId, args } });
       result = `Tool ${fnName} failed: ${err instanceof Error ? err.message : "unknown error"}`;
     }
 
@@ -173,72 +148,35 @@ async function handleToolCalls(body: VapiMessage) {
 async function toolConfirmOrder(orderId: string): Promise<string> {
   const order = await db.order.update({
     where: { id: orderId },
-    data: {
-      status: "CONFIRMED",
-      confirmedAt: new Date(),
-      aiCallStatus: "REACHED",
-    },
+    data: { status: "CONFIRMED", confirmedAt: new Date(), aiCallStatus: "REACHED" },
   });
-
   revalidatePath("/dashboard");
   return `Order #${order.orderNumber} confirmed successfully.`;
 }
 
-async function toolPostponeOrder(
-  orderId: string,
-  args: Record<string, unknown>,
-): Promise<string> {
+async function toolPostponeOrder(orderId: string, args: Record<string, unknown>): Promise<string> {
   const reason = (args.reason as string) ?? "Customer requested postponement";
-
   const order = await db.order.update({
     where: { id: orderId },
-    data: {
-      status: "POSTPONED",
-      aiCallStatus: "REACHED",
-    },
+    data: { status: "POSTPONED", aiCallStatus: "REACHED" },
   });
-
-  await db.orderNote.create({
-    data: {
-      orderId,
-      note: `Order postponed by AI agent. Reason: ${reason}`,
-    },
-  });
-
+  await db.orderNote.create({ data: { orderId, note: `Order postponed by AI agent. Reason: ${reason}` } });
   revalidatePath("/dashboard");
   return `Order #${order.orderNumber} postponed. Reason: ${reason}`;
 }
 
-async function toolCancelOrder(
-  orderId: string,
-  args: Record<string, unknown>,
-): Promise<string> {
+async function toolCancelOrder(orderId: string, args: Record<string, unknown>): Promise<string> {
   const reason = (args.reason as string) ?? "Customer requested cancellation";
-
   const order = await db.order.update({
     where: { id: orderId },
-    data: {
-      status: "CANCELLED",
-      cancelledAt: new Date(),
-      aiCallStatus: "REACHED",
-    },
+    data: { status: "CANCELLED", cancelledAt: new Date(), aiCallStatus: "REACHED" },
   });
-
-  await db.orderNote.create({
-    data: {
-      orderId,
-      note: `Order cancelled by AI agent. Reason: ${reason}`,
-    },
-  });
-
+  await db.orderNote.create({ data: { orderId, note: `Order cancelled by AI agent. Reason: ${reason}` } });
   revalidatePath("/dashboard");
   return `Order #${order.orderNumber} cancelled. Reason: ${reason}`;
 }
 
-async function toolUpdateDeliveryDetails(
-  orderId: string,
-  args: Record<string, unknown>,
-): Promise<string> {
+async function toolUpdateDeliveryDetails(orderId: string, args: Record<string, unknown>): Promise<string> {
   const updates: Record<string, unknown> = {};
   const changes: string[] = [];
 
@@ -259,32 +197,16 @@ async function toolUpdateDeliveryDetails(
     changes.push(`delivery preference → "${args.deliveryPreference}"`);
   }
 
-  if (Object.keys(updates).length === 0) {
-    return "No delivery details provided to update.";
-  }
+  if (Object.keys(updates).length === 0) return "No delivery details provided to update.";
 
-  const order = await db.order.update({
-    where: { id: orderId },
-    data: updates,
-  });
-
+  const order = await db.order.update({ where: { id: orderId }, data: updates });
   return `Order #${order.orderNumber} updated: ${changes.join(", ")}`;
 }
 
-async function toolAddNote(
-  orderId: string,
-  args: Record<string, unknown>,
-): Promise<string> {
+async function toolAddNote(orderId: string, args: Record<string, unknown>): Promise<string> {
   const note = (args.note as string) ?? (args.message as string) ?? "";
   if (!note.trim()) return "No note content provided.";
-
-  await db.orderNote.create({
-    data: {
-      orderId,
-      note: `[AI Agent] ${note}`,
-    },
-  });
-
+  await db.orderNote.create({ data: { orderId, note: `[AI Agent] ${note}` } });
   return "Note saved.";
 }
 
@@ -299,39 +221,22 @@ async function toolScheduleFollowUp(
   let followUpDate: Date;
   if (dateStr) {
     followUpDate = new Date(dateStr);
-    if (isNaN(followUpDate.getTime())) {
-      // If AI passed something unparseable, default to 2 hours from now
-      followUpDate = new Date(Date.now() + 2 * 60 * 60 * 1000);
-    }
+    if (isNaN(followUpDate.getTime())) followUpDate = new Date(Date.now() + 2 * 60 * 60 * 1000);
   } else {
     followUpDate = new Date(Date.now() + 2 * 60 * 60 * 1000);
   }
 
-  // Save note with follow-up date
   await db.orderNote.create({
-    data: {
-      orderId,
-      note: `[AI Agent] Follow-up scheduled: ${reason}`,
-      isFollowUp: true,
-      followUpDate,
-    },
+    data: { orderId, note: `[AI Agent] Follow-up scheduled: ${reason}`, isFollowUp: true, followUpDate },
   });
-
-  // Schedule the next call at the requested time
   await db.order.update({
     where: { id: orderId },
-    data: {
-      aiCallStatus: "PENDING",
-      aiNextCallAt: followUpDate,
-    },
+    data: { aiCallStatus: "PENDING", aiNextCallAt: followUpDate },
   });
 
   const formatted = followUpDate.toLocaleString("en-NG", {
-    dateStyle: "medium",
-    timeStyle: "short",
-    timeZone: "Africa/Lagos",
+    dateStyle: "medium", timeStyle: "short", timeZone: "Africa/Lagos",
   });
-
   return `Follow-up scheduled for ${formatted}. Reason: ${reason}`;
 }
 
@@ -346,18 +251,16 @@ async function toolRequestWhatsApp(
     where: { id: orderId },
     include: { items: { include: { product: true } } },
   });
-
   if (!order) return "Order not found.";
 
   const whatsappNumber = order.customerWhatsapp ?? order.customerPhone;
   const productName = order.items[0]?.product.name ?? "your product";
-  const packageDesc = order.items
-    .map((item) => `${item.quantity}x ${item.product.name}`)
-    .join(", ");
+  const packageDesc = order.items.map((i) => `${i.quantity}x ${i.product.name}`).join(", ");
 
   const message = getWhatsAppMessage(
     {
       id: order.id,
+      organizationId: order.organizationId,
       orderNumber: order.orderNumber,
       customerName: order.customerName,
       customerPhone: order.customerPhone,
@@ -376,62 +279,41 @@ async function toolRequestWhatsApp(
     stage,
   );
 
-  // Mark WhatsApp as requested — the actual sending is handled by the
-  // WhatsApp service (Railway) which polls or receives events.
-  // For now, save the message to the latest call log.
-  const callLog = await db.aiCallLog.findFirst({
-    where: { orderId },
-    orderBy: { createdAt: "desc" },
-  });
-
+  const callLog = await db.aiCallLog.findFirst({ where: { orderId }, orderBy: { createdAt: "desc" } });
   if (callLog) {
-    await db.aiCallLog.update({
-      where: { id: callLog.id },
-      data: { whatsappSent: true, whatsappSentAt: new Date() },
-    });
+    await db.aiCallLog.update({ where: { id: callLog.id }, data: { whatsappSent: true, whatsappSentAt: new Date() } });
   }
 
-  // Save the WhatsApp message as a note so it's visible in the dashboard
-  await db.orderNote.create({
-    data: {
-      orderId,
-      note: `[WhatsApp → ${whatsappNumber}] ${message}`,
-    },
-  });
-
+  await db.orderNote.create({ data: { orderId, note: `[WhatsApp → ${whatsappNumber}] ${message}` } });
   return `WhatsApp message queued for ${whatsappNumber}.`;
 }
 
 async function toolReportDeliveryDispute(
   orderId: string,
   args: Record<string, unknown>,
+  organizationId?: string,
 ): Promise<string> {
-  const description =
-    (args.description as string) ??
-    "Customer reports they did not receive the order.";
+  const description = (args.description as string) ?? "Customer reports they did not receive the order.";
 
-  // Save detailed note
-  await db.orderNote.create({
-    data: {
-      orderId,
-      note: `[DELIVERY DISPUTE] ${description}`,
-    },
-  });
+  await db.orderNote.create({ data: { orderId, note: `[DELIVERY DISPUTE] ${description}` } });
 
-  // Notify all admins
   const order = await db.order.findUnique({
     where: { id: orderId },
-    select: { orderNumber: true, customerName: true, customerPhone: true },
+    select: { orderNumber: true, customerName: true, customerPhone: true, organizationId: true },
   });
 
   if (order) {
-    const admins = await db.user.findMany({
-      where: { role: "ADMIN", isActive: true },
-      select: { id: true },
+    const orgId = organizationId ?? order.organizationId;
+
+    // Get admin members of this org
+    const adminMembers = await db.organizationMember.findMany({
+      where: { organizationId: orgId, role: { in: ["OWNER", "ADMIN"] }, isActive: true },
+      select: { userId: true },
     });
 
     await createBulkNotifications({
-      userIds: admins.map((a) => a.id),
+      userIds: adminMembers.map((m) => m.userId),
+      organizationId: orgId,
       type: "GENERAL",
       title: `⚠️ Delivery Dispute — Order #${order.orderNumber}`,
       message: `${order.customerName} (${order.customerPhone}) reports they did NOT receive their order. ${description}`,
@@ -446,12 +328,13 @@ async function toolReportDeliveryDispute(
 async function toolAssignToDeliveryAgent(
   orderId: string,
   args: Record<string, unknown>,
+  organizationId?: string,
 ): Promise<string> {
   const agentId = args.agentId as string | undefined;
 
   if (!agentId) {
-    // No agent selected yet — return the list so the AI can choose
-    const agents = await getAvailableAgents();
+    // No agent selected — return list so AI can choose
+    const agents = await getAvailableAgents(organizationId);
 
     if (agents.length === 0) {
       return "No delivery agents are currently available. The admin will assign one manually.";
@@ -462,9 +345,7 @@ async function toolAssignToDeliveryAgent(
       select: { city: true, state: true, deliveryAddress: true },
     });
 
-    const agentList = agents
-      .map((a) => `- ID: ${a.id} | Name: ${a.name} | Location: ${a.location}`)
-      .join("\n");
+    const agentList = agents.map((a) => `- ID: ${a.id} | Name: ${a.name} | Location: ${a.location}`).join("\n");
 
     return (
       `Customer address: ${order?.deliveryAddress ?? ""}, ${order?.city ?? ""}, ${order?.state ?? ""}\n\n` +
@@ -473,28 +354,21 @@ async function toolAssignToDeliveryAgent(
     );
   }
 
-  // Agent selected — assign and build delivery message
   const order = await db.order.findUnique({
     where: { id: orderId },
     include: { items: { include: { product: true } } },
   });
-
   if (!order) return "Order not found.";
 
+  // Verify agent belongs to this org
   const agent = await db.agent.findUnique({
-    where: { id: agentId },
+    where: { id: agentId, organizationId: order.organizationId },
     select: { id: true, name: true, phone: true, whatsappGroupId: true },
   });
-
   if (!agent) return "Agent not found.";
 
-  // Assign agent to order
-  await db.order.update({
-    where: { id: orderId },
-    data: { agentId: agent.id },
-  });
+  await db.order.update({ where: { id: orderId }, data: { agentId: agent.id } });
 
-  // Build the delivery assignment message
   const message = buildDeliveryAssignmentMessage({
     orderNumber: order.orderNumber,
     customerName: order.customerName,
@@ -505,33 +379,22 @@ async function toolAssignToDeliveryAgent(
     state: order.state,
     currency: order.currency,
     totalAmount: order.totalAmount,
-    items: order.items.map((item) => ({
-      quantity: item.quantity,
-      productName: item.product.name,
-    })),
+    items: order.items.map((item) => ({ quantity: item.quantity, productName: item.product.name })),
   });
 
-  // Save the delivery assignment as a note
   await db.orderNote.create({
     data: {
       orderId,
-      note: `[AI Agent] Assigned to delivery agent: ${agent.name} (${agent.phone}).\n\nDelivery message for WhatsApp group:\n${message}`,
+      note: `[AI Agent] Assigned to delivery agent: ${agent.name} (${agent.phone}).\n\nDelivery message:\n${message}`,
     },
   });
 
-  // If agent has a WhatsApp group, queue the message for the Railway service
   if (agent.whatsappGroupId) {
-    await db.orderNote.create({
-      data: {
-        orderId,
-        note: `[WhatsApp Group → ${agent.name}] ${message}`,
-      },
-    });
+    await db.orderNote.create({ data: { orderId, note: `[WhatsApp Group → ${agent.name}] ${message}` } });
   }
 
   revalidatePath("/dashboard");
-
-  return `Order assigned to ${agent.name} (covers ${agent.phone}). Delivery assignment message has been prepared.${agent.whatsappGroupId ? " Message will be sent to the agent's WhatsApp group." : " No WhatsApp group configured for this agent — message saved for manual sending."}`;
+  return `Order assigned to ${agent.name}. Delivery assignment message prepared.${agent.whatsappGroupId ? " Message will be sent to the agent's WhatsApp group." : " No WhatsApp group configured — message saved for manual sending."}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -551,71 +414,48 @@ async function handleEndOfCallReport(body: VapiMessage) {
   const attemptNumber = metadata?.attemptNumber ?? 1;
   const cycleNumber = metadata?.cycleNumber ?? 1;
   const stage = metadata?.stage ?? "confirmation";
-
-  // Map Vapi endedReason to our CallOutcome
   const outcome = mapEndedReasonToOutcome(body.endedReason);
 
-  // Find the call log for this call
   const callLog = vapiCallId
     ? await db.aiCallLog.findFirst({ where: { vapiCallId } })
-    : await db.aiCallLog.findFirst({
-        where: { orderId },
-        orderBy: { createdAt: "desc" },
-      });
+    : await db.aiCallLog.findFirst({ where: { orderId }, orderBy: { createdAt: "desc" } });
 
-  // Update call log with outcome, transcript, and duration
   if (callLog) {
     await db.aiCallLog.update({
       where: { id: callLog.id },
       data: {
         outcome,
         transcript: body.transcript ?? null,
-        durationSecs: body.durationSeconds
-          ? Math.round(body.durationSeconds)
-          : null,
+        durationSecs: body.durationSeconds ? Math.round(body.durationSeconds) : null,
       },
     });
   }
 
-  // If the customer answered and the call stage is confirmation,
-  // the order status has already been updated by tool calls (confirmOrder, etc.)
-  // We just need to handle the unanswered/failed cases.
   if (outcome === "ANSWERED") {
-    // Call was answered — the AI handled it via tool calls.
-    // Mark the call status as REACHED if not already set by a tool.
-    await db.order.update({
-      where: { id: orderId },
-      data: { aiCallStatus: "REACHED" },
-    });
-
-    console.log(
-      `[vapi-webhook] end-of-call orderId=${orderId} outcome=ANSWERED attempt=${attemptNumber}/${cycleNumber}`,
-    );
+    await db.order.update({ where: { id: orderId }, data: { aiCallStatus: "REACHED" } });
+    console.log(`[vapi-webhook] end-of-call orderId=${orderId} outcome=ANSWERED`);
     return;
   }
 
-  // Unanswered / failed — schedule next attempt
-  console.log(
-    `[vapi-webhook] end-of-call orderId=${orderId} outcome=${outcome} attempt=${attemptNumber}/${cycleNumber} — scheduling retry`,
-  );
+  console.log(`[vapi-webhook] end-of-call orderId=${orderId} outcome=${outcome} — scheduling retry`);
 
   const order = await db.order.findUnique({
     where: { id: orderId },
-    select: { aiCycleStartAt: true, customerWhatsapp: true, customerPhone: true },
+    select: { aiCycleStartAt: true, customerWhatsapp: true, customerPhone: true, organizationId: true },
   });
 
+  // scheduleNextCall now requires organizationId as 2nd param
   await scheduleNextCall(
     orderId,
+    order?.organizationId ?? "",
     attemptNumber + 1,
     cycleNumber,
     order?.aiCycleStartAt ?? undefined,
   );
 
-  // Send a "we tried calling you" WhatsApp for first missed call in a cycle
   if (attemptNumber === 1 && order) {
     const whatsappNumber = order.customerWhatsapp ?? order.customerPhone;
 
-    // Fetch full order for WhatsApp message
     const fullOrder = await db.order.findUnique({
       where: { id: orderId },
       include: { items: { include: { product: true } } },
@@ -623,13 +463,12 @@ async function handleEndOfCallReport(body: VapiMessage) {
 
     if (fullOrder) {
       const productName = fullOrder.items[0]?.product.name ?? "your product";
-      const packageDesc = fullOrder.items
-        .map((item) => `${item.quantity}x ${item.product.name}`)
-        .join(", ");
+      const packageDesc = fullOrder.items.map((i) => `${i.quantity}x ${i.product.name}`).join(", ");
 
       const message = getWhatsAppMessage(
         {
           id: fullOrder.id,
+          organizationId: fullOrder.organizationId,
           orderNumber: fullOrder.orderNumber,
           customerName: fullOrder.customerName,
           customerPhone: fullOrder.customerPhone,
@@ -648,15 +487,10 @@ async function handleEndOfCallReport(body: VapiMessage) {
         stage,
       );
 
-      // Save WhatsApp message as note
       await db.orderNote.create({
-        data: {
-          orderId,
-          note: `[WhatsApp → ${whatsappNumber}] (missed call follow-up) ${message}`,
-        },
+        data: { orderId, note: `[WhatsApp → ${whatsappNumber}] (missed call follow-up) ${message}` },
       });
 
-      // Mark on call log
       if (callLog) {
         await db.aiCallLog.update({
           where: { id: callLog.id },
@@ -671,41 +505,12 @@ async function handleEndOfCallReport(body: VapiMessage) {
 // Helpers
 // ---------------------------------------------------------------------------
 
-/**
- * Maps Vapi's endedReason to our AiCallOutcome enum.
- *
- * Vapi endedReason values:
- * - "assistant-ended-call" / "customer-ended-call" → ANSWERED
- * - "customer-did-not-answer" → NO_ANSWER
- * - "customer-busy" → BUSY
- * - "voicemail" → VOICEMAIL
- * - Everything else (error, silence, etc.) → FAILED
- */
 function mapEndedReasonToOutcome(endedReason?: string): CallOutcome {
   if (!endedReason) return "FAILED";
-
   const reason = endedReason.toLowerCase();
-
-  if (
-    reason.includes("assistant-ended-call") ||
-    reason.includes("customer-ended-call") ||
-    reason === "assistant-ended-call" ||
-    reason === "customer-ended-call"
-  ) {
-    return "ANSWERED";
-  }
-
-  if (reason.includes("no-answer") || reason.includes("did-not-answer")) {
-    return "NO_ANSWER";
-  }
-
-  if (reason.includes("busy")) {
-    return "BUSY";
-  }
-
-  if (reason.includes("voicemail")) {
-    return "VOICEMAIL";
-  }
-
+  if (reason.includes("assistant-ended-call") || reason.includes("customer-ended-call")) return "ANSWERED";
+  if (reason.includes("no-answer") || reason.includes("did-not-answer")) return "NO_ANSWER";
+  if (reason.includes("busy")) return "BUSY";
+  if (reason.includes("voicemail")) return "VOICEMAIL";
   return "FAILED";
 }

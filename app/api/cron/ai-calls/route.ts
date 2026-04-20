@@ -1,7 +1,7 @@
 /**
  * Cron: AI Call Scheduler
  *
- * Runs every 15 minutes (configured in vercel.json).
+ * Runs every 15 minutes via cron-job.org.
  * Picks up orders where aiNextCallAt <= now and aiCallStatus is PENDING or UNREACHABLE,
  * then fires the next outbound call via Vapi.
  *
@@ -14,10 +14,9 @@ import { db } from "@/lib/db";
 import { triggerOutboundCall } from "@/lib/vapi";
 import type { OrderContext } from "@/lib/ai-agent";
 
-export const maxDuration = 60; // Allow up to 60s for processing multiple calls
+export const maxDuration = 60;
 
 export async function GET(req: NextRequest) {
-  // Verify cron secret
   const authHeader = req.headers.get("authorization");
   const cronSecret = process.env.CRON_SECRET;
 
@@ -25,7 +24,6 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  // Check if Vapi is enabled
   if (process.env.VAPI_ENABLED !== "true") {
     return NextResponse.json({ skipped: true, reason: "VAPI_ENABLED is not true" });
   }
@@ -33,7 +31,7 @@ export async function GET(req: NextRequest) {
   try {
     const now = new Date();
 
-    // Find orders due for a call
+    // Cron processes ALL orgs — multi-tenant Vapi integration is shared
     const dueOrders = await db.order.findMany({
       where: {
         aiNextCallAt: { lte: now },
@@ -44,7 +42,7 @@ export async function GET(req: NextRequest) {
       include: {
         items: { include: { product: true } },
       },
-      take: 10, // Process max 10 per invocation to stay within timeout
+      take: 10,
       orderBy: { aiNextCallAt: "asc" },
     });
 
@@ -61,12 +59,10 @@ export async function GET(req: NextRequest) {
         const attemptNumber = order.aiCallAttempts + 1;
         const cycleNumber = order.aiCycleNumber;
 
-        // Determine call stage based on order status
         let stage: "confirmation" | "dispatch" | "delivery" = "confirmation";
         if (order.status === "DISPATCHED") stage = "dispatch";
         if (order.status === "DELIVERED") stage = "delivery";
 
-        // Build OrderContext
         const productName = order.items[0]?.product.name ?? "your product";
         const packageDesc = order.items
           .map((item) => `${item.quantity}x ${item.product.name}`)
@@ -74,6 +70,7 @@ export async function GET(req: NextRequest) {
 
         const ctx: OrderContext = {
           id: order.id,
+          organizationId: order.organizationId,
           orderNumber: order.orderNumber,
           customerName: order.customerName,
           customerPhone: order.customerPhone,
@@ -92,42 +89,26 @@ export async function GET(req: NextRequest) {
         const vapiCallId = await triggerOutboundCall(ctx, attemptNumber, cycleNumber, stage);
 
         console.log(
-          `[cron/ai-calls] Fired call for order #${order.orderNumber} attempt=${attemptNumber} cycle=${cycleNumber} vapiCallId=${vapiCallId}`,
+          `[cron/ai-calls] Fired call for order #${order.orderNumber} org=${order.organizationId} attempt=${attemptNumber} vapiCallId=${vapiCallId}`,
         );
 
-        results.push({
-          orderId: order.id,
-          orderNumber: order.orderNumber,
-          status: "called",
-        });
+        results.push({ orderId: order.id, orderNumber: order.orderNumber, status: "called" });
       } catch (err) {
         Sentry.captureException(err, {
-          extra: {
-            orderId: order.id,
-            orderNumber: order.orderNumber,
-            attemptNumber: order.aiCallAttempts + 1,
-          },
+          extra: { orderId: order.id, orderNumber: order.orderNumber, attemptNumber: order.aiCallAttempts + 1 },
         });
-        console.error(
-          `[cron/ai-calls] Failed to call order #${order.orderNumber}:`,
-          err,
-        );
+        console.error(`[cron/ai-calls] Failed to call order #${order.orderNumber}:`, err);
 
-        // Schedule retry in 5 minutes so the cron picks it up next time
         try {
           await db.order.update({
-            where: { id: order.id },
+            where: { id: order.id, organizationId: order.organizationId },
             data: { aiNextCallAt: new Date(now.getTime() + 5 * 60 * 1000) },
           });
         } catch {
-          // If even this fails, Sentry has the original error
+          // Sentry already has the original error
         }
 
-        results.push({
-          orderId: order.id,
-          orderNumber: order.orderNumber,
-          status: "failed",
-        });
+        results.push({ orderId: order.id, orderNumber: order.orderNumber, status: "failed" });
       }
     }
 
