@@ -1,7 +1,5 @@
-import { redirect } from "next/navigation";
-import { auth } from "@/lib/auth";
-import { headers } from "next/headers";
 import { db } from "@/lib/db";
+import { requireOrgContext } from "@/lib/org-context";
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 import { EmbedFormGenerator } from "./_components/embed-form-generator";
@@ -12,15 +10,12 @@ export const metadata = {
 };
 
 export default async function EmbedFormPage() {
-  const session = await auth.api.getSession({ headers: await headers() });
-
-  if (!session?.user || session.user.role !== "ADMIN") {
-    redirect("/dashboard");
-  }
+  const ctx = await requireOrgContext();
 
   // Fetch all active products with package counts
   const products = await db.product.findMany({
     where: {
+      organizationId: ctx.organizationId,
       isActive: true,
       isDeleted: false,
     },

@@ -1,9 +1,7 @@
 import { Suspense } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { db } from "@/lib/db";
-import { auth } from "@/lib/auth";
-import { headers } from "next/headers";
-import { redirect } from "next/navigation";
+import { requireOrgContext } from "@/lib/org-context";
 import { OrderStatus } from "@prisma/client";
 import {
   AdminInventoryClient,
@@ -12,10 +10,11 @@ import {
 import { PushNotificationManager } from "@/app/_components/push-notification-manager";
 import { InstallPrompt } from "@/app/_components/install-prompt";
 
-async function getInventoryData() {
+async function getInventoryData(organizationId: string) {
   // Fetch products with agent stock
   const products = await db.product.findMany({
     where: {
+      organizationId,
       isDeleted: false,
       isActive: true,
     },
@@ -46,6 +45,7 @@ async function getInventoryData() {
   // Fetch agents with their stock
   const agents = await db.agent.findMany({
     where: {
+      organizationId,
       isActive: true,
     },
     include: {
@@ -114,7 +114,7 @@ async function getInventoryData() {
   const soldRows = await db.orderItem.groupBy({
     by: ["productId"],
     where: {
-      order: { status: OrderStatus.DELIVERED },
+      order: { organizationId, status: OrderStatus.DELIVERED },
     },
     _sum: { quantity: true },
   });
@@ -139,23 +139,13 @@ async function getInventoryData() {
 }
 
 export default async function InventoryManagerPage() {
-  // Authorization check
-  const session = await auth.api.getSession({ headers: await headers() });
-
-  if (!session?.user) {
-    redirect("/login");
-  }
-
-  // Check if user is INVENTORY_MANAGER
-  const user = await db.user.findUnique({
-    where: { id: session.user.id },
-  });
-
-  if (user?.role !== "INVENTORY_MANAGER") {
+  const ctx = await requireOrgContext();
+  if (!["INVENTORY_MANAGER", "ADMIN", "OWNER"].includes(ctx.role)) {
+    const { redirect } = await import("next/navigation");
     redirect("/dashboard");
   }
-  const role = user.role;
-  const data = await getInventoryData();
+  const role = ctx.role as "INVENTORY_MANAGER" | "ADMIN" | "OWNER";
+  const data = await getInventoryData(ctx.organizationId);
 
   return (
     <div className="space-y-4 sm:space-y-6 md:space-y-8">
