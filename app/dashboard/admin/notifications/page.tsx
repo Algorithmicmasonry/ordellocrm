@@ -1,6 +1,4 @@
-import { redirect } from "next/navigation";
-import { auth } from "@/lib/auth";
-import { headers } from "next/headers";
+import { requireOrgContext } from "@/lib/org-context";
 import { NotificationsClient } from "../../notifications/_components";
 
 export default async function NotificationsPage({
@@ -8,12 +6,7 @@ export default async function NotificationsPage({
 }: {
   searchParams: Promise<{ page?: string; filter?: string }>;
 }) {
-  // Authentication check
-  const session = await auth.api.getSession({ headers: await headers() });
-
-  if (!session || !session.user) {
-    redirect("/login");
-  }
+  await requireOrgContext();
 
   const params = await searchParams;
   const page = parseInt(params.page || "1");

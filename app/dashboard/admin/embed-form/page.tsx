@@ -1,19 +1,8 @@
-import { redirect } from "next/navigation";
-import { auth } from "@/lib/auth";
-import { headers } from "next/headers";
+import { requireOrgContext } from "@/lib/org-context";
 import { EmbedCodeGenerator } from "./_components";
 
 export default async function EmbedFormPage() {
-  // Authentication check
-  const session = await auth.api.getSession({ headers: await headers() });
-
-  if (!session || !session.user) {
-    redirect("/login");
-  }
-
-  if (session.user.role !== "ADMIN") {
-    redirect("/dashboard");
-  }
+  await requireOrgContext();
 
   return (
     <div className="space-y-6">
