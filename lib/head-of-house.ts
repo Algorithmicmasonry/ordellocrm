@@ -1,27 +1,14 @@
 import { db } from "./db";
 import { OrderStatus } from "@prisma/client";
 
-/** West African Time offset in milliseconds (UTC+1) */
 const WAT_OFFSET_MS = 1 * 60 * 60 * 1000;
 
-/**
- * HoH policy start date — the first Sunday-Saturday performance week
- * that is eligible for the Head of House competition (March 1, 2026).
- * No HoH records should be computed for weeks before this date.
- */
-export const HOH_POLICY_START = new Date("2026-03-01T00:00:00+01:00"); // Mar 1 00:00 WAT
+export const HOH_POLICY_START = new Date("2026-03-01T00:00:00+01:00");
 
-/**
- * Returns the Sunday 00:00:00 and Saturday 23:59:59 boundaries in WAT
- * for the calendar week that contains `date`.
- */
 export function getWATWeekBounds(date: Date): { start: Date; end: Date } {
-  // Convert to WAT by adding offset
   const watMs = date.getTime() + WAT_OFFSET_MS;
   const watDate = new Date(watMs);
-
-  // Day of week: 0=Sun, 1=Mon, ..., 6=Sat
-  const dow = watDate.getUTCDay(); // Sun=0
+  const dow = watDate.getUTCDay();
 
   const sundayWat = new Date(watMs - dow * 86400000);
   sundayWat.setUTCHours(0, 0, 0, 0);
@@ -29,7 +16,6 @@ export function getWATWeekBounds(date: Date): { start: Date; end: Date } {
   const saturdayWat = new Date(sundayWat.getTime() + 6 * 86400000);
   saturdayWat.setUTCHours(23, 59, 59, 999);
 
-  // Convert back to UTC for storage
   return {
     start: new Date(sundayWat.getTime() - WAT_OFFSET_MS),
     end: new Date(saturdayWat.getTime() - WAT_OFFSET_MS),
@@ -37,46 +23,36 @@ export function getWATWeekBounds(date: Date): { start: Date; end: Date } {
 }
 
 /**
- * Computes the Head of House for the performance week containing `weekDate`.
- *
- * Tie-breaking order:
- *   1. Most delivered orders that week
- *   2. Highest conversion rate (delivered / total non-cancelled) that week
- *   3. Highest all-time conversion rate
- *
- * The winner holds the HoH TITLE the following week.
- * Idempotent — upserts by performanceWeekStart.
+ * Computes the Head of House for an org's performance week.
+ * All queries are scoped to organizationId.
  */
-export async function computeHoH(weekDate: Date) {
+export async function computeHoH(weekDate: Date, organizationId: string) {
   const { start: perfStart, end: perfEnd } = getWATWeekBounds(weekDate);
-
-  // Title week = performance week + 7 days
   const titleStart = new Date(perfStart.getTime() + 7 * 86400000);
   const titleEnd = new Date(perfEnd.getTime() + 7 * 86400000);
 
-  // Get all active sales reps
-  const reps = await db.user.findMany({
-    where: { role: "SALES_REP", isActive: true },
-    select: { id: true },
+  // Get active SALES_REP members of this org (excluding AI agents)
+  const members = await db.organizationMember.findMany({
+    where: { organizationId, role: "SALES_REP", isActive: true, isAiAgent: false },
+    select: { userId: true },
   });
 
-  if (reps.length === 0) return null;
+  if (members.length === 0) return null;
+  const repIds = members.map((m) => m.userId);
 
-  // Get all orders in the performance week for these reps
   const weekOrders = await db.order.findMany({
     where: {
-      assignedToId: { in: reps.map((r) => r.id) },
+      organizationId,
+      assignedToId: { in: repIds },
       createdAt: { gte: perfStart, lte: perfEnd },
       status: { not: OrderStatus.CANCELLED },
     },
     select: { id: true, assignedToId: true, status: true, deliveredAt: true },
   });
 
-  // Per-rep stats for this week
   const repStats = new Map<string, { total: number; delivered: number }>();
-  for (const rep of reps) {
-    repStats.set(rep.id, { total: 0, delivered: 0 });
-  }
+  for (const id of repIds) repStats.set(id, { total: 0, delivered: 0 });
+
   for (const order of weekOrders) {
     if (!order.assignedToId) continue;
     const s = repStats.get(order.assignedToId);
@@ -92,40 +68,36 @@ export async function computeHoH(weekDate: Date) {
     }
   }
 
-  // Find the winner: conversion rate first, delivered orders second
   let winnerId: string | null = null;
   let winnerDelivered = -1;
   let winnerWeekRate = -1;
 
   for (const [repId, stats] of repStats) {
-    if (stats.delivered === 0) continue; // must have at least one delivery
+    if (stats.delivered === 0) continue;
     const weekRate = stats.total > 0 ? stats.delivered / stats.total : 0;
 
     if (weekRate > winnerWeekRate) {
       winnerId = repId;
       winnerDelivered = stats.delivered;
       winnerWeekRate = weekRate;
-    } else if (weekRate === winnerWeekRate) {
-      if (stats.delivered > winnerDelivered) {
-        winnerId = repId;
-        winnerDelivered = stats.delivered;
-      }
-      // exact tie on both → resolved below via all-time conversion rate
+    } else if (weekRate === winnerWeekRate && stats.delivered > winnerDelivered) {
+      winnerId = repId;
+      winnerDelivered = stats.delivered;
     }
   }
 
   if (!winnerId) return null;
 
-  // Resolve remaining ties by all-time conversion rate
+  // Resolve ties by all-time conversion rate
   const tiedReps = [...repStats.entries()].filter(([, s]) => {
     const r = s.total > 0 ? s.delivered / s.total : 0;
     return s.delivered === winnerDelivered && r === winnerWeekRate;
   });
 
   if (tiedReps.length > 1) {
-    // Fetch all-time stats for tied reps
     const allTimeOrders = await db.order.findMany({
       where: {
+        organizationId,
         assignedToId: { in: tiedReps.map(([id]) => id) },
         status: { not: OrderStatus.CANCELLED },
       },
@@ -145,21 +117,18 @@ export async function computeHoH(weekDate: Date) {
     let bestRate = -1;
     for (const [id, s] of allTime) {
       const rate = s.total > 0 ? s.delivered / s.total : 0;
-      if (rate > bestRate) {
-        bestRate = rate;
-        winnerId = id;
-      }
+      if (rate > bestRate) { bestRate = rate; winnerId = id; }
     }
   }
 
   const finalStats = repStats.get(winnerId)!;
-  const conversionRate =
-    finalStats.total > 0 ? finalStats.delivered / finalStats.total : 0;
+  const conversionRate = finalStats.total > 0 ? finalStats.delivered / finalStats.total : 0;
 
-  // Upsert the HoH record
+  // Upsert uses compound key (organizationId + performanceWeekStart)
   await db.headOfHouse.upsert({
-    where: { performanceWeekStart: perfStart },
+    where: { organizationId_performanceWeekStart: { organizationId, performanceWeekStart: perfStart } },
     create: {
+      organizationId,
       userId: winnerId,
       performanceWeekStart: perfStart,
       performanceWeekEnd: perfEnd,
@@ -178,19 +147,20 @@ export async function computeHoH(weekDate: Date) {
     },
   });
 
-  return await db.headOfHouse.findUnique({
-    where: { performanceWeekStart: perfStart },
+  return db.headOfHouse.findUnique({
+    where: { organizationId_performanceWeekStart: { organizationId, performanceWeekStart: perfStart } },
     include: { user: { select: { id: true, name: true } } },
   });
 }
 
 /**
- * Returns the current Head of House — the rep whose title week includes today.
+ * Returns the current HoH for an org — the rep whose title week includes today.
  */
-export async function getCurrentHoH() {
+export async function getCurrentHoH(organizationId: string) {
   const now = new Date();
   return db.headOfHouse.findFirst({
     where: {
+      organizationId,
       titleWeekStart: { lte: now },
       titleWeekEnd: { gte: now },
     },
@@ -199,20 +169,18 @@ export async function getCurrentHoH() {
 }
 
 /**
- * Returns all HoH records whose TITLE week overlaps the given range.
- * Used by payroll to calculate HoH bonuses for a month.
+ * Returns all HoH title weeks that overlap the given range for an org.
  */
 export async function getHoHWeeksInRange(
   start: Date,
-  end: Date
+  end: Date,
+  organizationId: string,
 ): Promise<{ userId: string; titleWeekStart: Date; titleWeekEnd: Date }[]> {
   const now = new Date();
   return db.headOfHouse.findMany({
     where: {
-      // Payroll policy: pay HoH in the month the TITLE week starts.
-      // So a week that starts in March and overlaps April is paid in March only.
+      organizationId,
       titleWeekStart: { gte: start, lte: end },
-      // Exclude future title weeks — only count weeks that have already started.
       AND: { titleWeekStart: { lte: now } },
     },
     select: { userId: true, titleWeekStart: true, titleWeekEnd: true },
@@ -220,30 +188,24 @@ export async function getHoHWeeksInRange(
 }
 
 /**
- * Computes HoH for every Monday-starting week within a date range
- * that doesn't already have a record. Idempotent.
+ * Computes HoH for all weeks in a date range that don't already have a record.
  */
-export async function computeHoHForRange(start: Date, end: Date) {
+export async function computeHoHForRange(start: Date, end: Date, organizationId: string) {
   const results = [];
-  // Never go before the policy start date
   const current = new Date(Math.max(start.getTime(), HOH_POLICY_START.getTime()));
   const now = new Date();
 
   while (current <= end) {
     const { start: weekStart, end: weekEnd } = getWATWeekBounds(current);
-
-    // Never compute HoH for a performance week that hasn't fully ended yet —
-    // the winner can only be determined once all orders for the week are in.
     if (weekEnd >= now) break;
 
     const existing = await db.headOfHouse.findUnique({
-      where: { performanceWeekStart: weekStart },
+      where: { organizationId_performanceWeekStart: { organizationId, performanceWeekStart: weekStart } },
     });
     if (!existing) {
-      const result = await computeHoH(current);
+      const result = await computeHoH(current, organizationId);
       if (result) results.push(result);
     }
-    // Advance by 7 days
     current.setDate(current.getDate() + 7);
   }
 

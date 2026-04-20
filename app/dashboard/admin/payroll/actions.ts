@@ -1,36 +1,37 @@
 "use server";
 
 import { db } from "@/lib/db";
-import { auth } from "@/lib/auth";
-import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { OrderStatus } from "@prisma/client";
 import { getHoHWeeksInRange, computeHoHForRange, HOH_POLICY_START } from "@/lib/head-of-house";
+import { requireOrgContext } from "@/lib/org-context";
 
 const HOH_DAILY_BONUS = 1500;
 const HOH_BONUS_DAYS = 7;
 const HOH_WEEK_BONUS = HOH_DAILY_BONUS * HOH_BONUS_DAYS; // ₦10,500
 
-async function requireAdmin() {
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user || session.user.role !== "ADMIN") {
-    throw new Error("Unauthorized");
-  }
-  return session.user;
+function requireAdmin(role: string) {
+  if (role !== "ADMIN" && role !== "OWNER") throw new Error("Unauthorized");
 }
 
-/** All users (SALES_REP + ADMIN) that have a pay rate set, plus all active SALES_REPs */
+/** All org members with pay rates + all active SALES_REPs */
 export async function getSalesRepsWithRates() {
   try {
-    await requireAdmin();
+    const ctx = await requireOrgContext();
+    requireAdmin(ctx.role);
 
-    const [users, rates] = await Promise.all([
-      db.user.findMany({
-        where: { isActive: true, role: { in: ["SALES_REP", "ADMIN"] } },
-        select: { id: true, name: true, email: true, role: true },
-        orderBy: [{ role: "asc" }, { name: "asc" }],
+    const [members, rates] = await Promise.all([
+      db.organizationMember.findMany({
+        where: {
+          organizationId: ctx.organizationId,
+          isActive: true,
+          role: { in: ["SALES_REP", "ADMIN", "OWNER"] },
+        },
+        include: { user: { select: { id: true, name: true, email: true } } },
+        orderBy: [{ role: "asc" }, { user: { name: "asc" } }],
       }),
       db.salesRepRate.findMany({
+        where: { organizationId: ctx.organizationId },
         select: { userId: true, ratePerOrder: true, updatedAt: true },
       }),
     ]);
@@ -39,9 +40,12 @@ export async function getSalesRepsWithRates() {
 
     return {
       success: true,
-      data: users.map((u) => ({
-        ...u,
-        rate: rateMap.get(u.id) ?? null,
+      data: members.map((m) => ({
+        id: m.userId,
+        name: m.user.name,
+        email: m.user.email,
+        role: m.role,
+        rate: rateMap.get(m.userId) ?? null,
       })),
     };
   } catch (error) {
@@ -49,14 +53,16 @@ export async function getSalesRepsWithRates() {
   }
 }
 
-/** Set or update the pay rate for a user */
+/** Set or update the pay rate for a member of this org */
 export async function setRepRate(userId: string, ratePerOrder: number) {
   try {
-    const admin = await requireAdmin();
+    const ctx = await requireOrgContext();
+    requireAdmin(ctx.role);
 
+    // SalesRepRate unique is (organizationId, userId)
     await db.salesRepRate.upsert({
-      where: { userId },
-      create: { userId, ratePerOrder, createdById: admin.id },
+      where: { organizationId_userId: { organizationId: ctx.organizationId, userId } },
+      create: { organizationId: ctx.organizationId, userId, ratePerOrder, createdById: ctx.userId },
       update: { ratePerOrder },
     });
 
@@ -67,45 +73,37 @@ export async function setRepRate(userId: string, ratePerOrder: number) {
   }
 }
 
-/**
- * Parse "YYYY-MM" and return start/end Date objects in WAT (UTC+1).
- * Start = first day of month 00:00 WAT, End = last day 23:59:59 WAT.
- */
 function parseMonthYear(monthYear: string): { start: Date; end: Date } {
   const [year, month] = monthYear.split("-").map(Number);
-  // WAT = UTC+1, so midnight WAT = 23:00 prev day UTC
   const startWAT = new Date(Date.UTC(year, month - 1, 1, 0, 0, 0, 0));
   const startUTC = new Date(startWAT.getTime() - 60 * 60 * 1000);
-
   const endWAT = new Date(Date.UTC(year, month, 0, 23, 59, 59, 999));
   const endUTC = new Date(endWAT.getTime() - 60 * 60 * 1000);
-
   return { start: startUTC, end: endUTC };
 }
 
-/**
- * Preview payroll for a given month without writing to DB.
- * Also computes missing HoH records for the period.
- */
+/** Preview payroll for a given month without writing to DB */
 export async function previewPayroll(monthYear: string) {
   try {
-    await requireAdmin();
+    const ctx = await requireOrgContext();
+    requireAdmin(ctx.role);
 
     const { start, end } = parseMonthYear(monthYear);
 
-    // Compute any missing HoH weeks in the period
-    await computeHoHForRange(start, end);
+    await computeHoHForRange(start, end, ctx.organizationId);
 
-    // Get all users with rates
     const [rates, hohWeeks] = await Promise.all([
       db.salesRepRate.findMany({
-        include: { user: { select: { id: true, name: true, role: true } } },
+        where: { organizationId: ctx.organizationId },
+        include: { user: { select: { id: true, name: true } } },
       }),
-      getHoHWeeksInRange(start > HOH_POLICY_START ? start : HOH_POLICY_START, end),
+      getHoHWeeksInRange(
+        start > HOH_POLICY_START ? start : HOH_POLICY_START,
+        end,
+        ctx.organizationId,
+      ),
     ]);
 
-    // Count HoH title weeks per user in this month.
-    // getHoHWeeksInRange already returns only weeks whose titleWeekStart is in [start, end].
     const hohWeeksPerUser = new Map<string, number>();
     for (const w of hohWeeks) {
       hohWeeksPerUser.set(w.userId, (hohWeeksPerUser.get(w.userId) ?? 0) + 1);
@@ -113,19 +111,17 @@ export async function previewPayroll(monthYear: string) {
 
     const items = await Promise.all(
       rates.map(async (rate) => {
-        // SALES_REP: count their own delivered orders
-        // ADMIN: count all delivered orders system-wide
-        const deliveryWhere =
-          rate.user.role === "SALES_REP"
-            ? {
-                assignedToId: rate.userId,
-                status: OrderStatus.DELIVERED,
-                deliveredAt: { gte: start, lte: end },
-              }
-            : {
-                status: OrderStatus.DELIVERED,
-                deliveredAt: { gte: start, lte: end },
-              };
+        // Get their membership role to decide counting logic
+        const member = await db.organizationMember.findUnique({
+          where: { organizationId_userId: { organizationId: ctx.organizationId, userId: rate.userId } },
+          select: { role: true },
+        });
+
+        const isAdmin = member?.role === "ADMIN" || member?.role === "OWNER";
+
+        const deliveryWhere = isAdmin
+          ? { organizationId: ctx.organizationId, status: OrderStatus.DELIVERED, deliveredAt: { gte: start, lte: end } }
+          : { organizationId: ctx.organizationId, assignedToId: rate.userId, status: OrderStatus.DELIVERED, deliveredAt: { gte: start, lte: end } };
 
         const ordersDelivered = await db.order.count({ where: deliveryWhere });
         const hohWeeksCount = hohWeeksPerUser.get(rate.userId) ?? 0;
@@ -135,7 +131,7 @@ export async function previewPayroll(monthYear: string) {
         return {
           userId: rate.userId,
           userName: rate.user.name,
-          userRole: rate.user.role,
+          userRole: member?.role ?? "SALES_REP",
           ordersDelivered,
           ratePerOrder: rate.ratePerOrder,
           baseAmount,
@@ -147,7 +143,6 @@ export async function previewPayroll(monthYear: string) {
     );
 
     const totalAmount = items.reduce((sum, i) => sum + i.totalAmount, 0);
-
     return { success: true, data: { items, totalAmount, start, end } };
   } catch (error) {
     return { success: false, error: String(error) };
@@ -155,32 +150,25 @@ export async function previewPayroll(monthYear: string) {
 }
 
 /** Generate a payroll as DRAFT */
-export async function generatePayroll(
-  monthYear: string,
-  label: string,
-  notes?: string
-) {
+export async function generatePayroll(monthYear: string, label: string, notes?: string) {
   try {
-    const admin = await requireAdmin();
+    const ctx = await requireOrgContext();
+    requireAdmin(ctx.role);
 
-    // Check for duplicate
-    const existing = await db.payroll.findUnique({ where: { monthYear } });
-    if (existing) {
-      return {
-        success: false,
-        error: "A payroll already exists for this month.",
-      };
-    }
+    // Payroll unique is (organizationId, monthYear)
+    const existing = await db.payroll.findUnique({
+      where: { organizationId_monthYear: { organizationId: ctx.organizationId, monthYear } },
+    });
+    if (existing) return { success: false, error: "A payroll already exists for this month." };
 
     const preview = await previewPayroll(monthYear);
-    if (!preview.success || !preview.data) {
-      return { success: false, error: preview.error };
-    }
+    if (!preview.success || !preview.data) return { success: false, error: preview.error };
 
     const { items, totalAmount, start, end } = preview.data;
 
     await db.payroll.create({
       data: {
+        organizationId: ctx.organizationId,
         label,
         monthYear,
         startDate: start,
@@ -188,7 +176,7 @@ export async function generatePayroll(
         status: "DRAFT",
         totalAmount,
         notes,
-        createdById: admin.id,
+        createdById: ctx.userId,
         items: {
           create: items.map((i) => ({
             userId: i.userId,
@@ -213,22 +201,22 @@ export async function generatePayroll(
 /** Mark a payroll as PAID and create an Expense record */
 export async function markPayrollPaid(payrollId: string) {
   try {
-    await requireAdmin();
+    const ctx = await requireOrgContext();
+    requireAdmin(ctx.role);
 
-    const payroll = await db.payroll.findUnique({ where: { id: payrollId } });
+    const payroll = await db.payroll.findUnique({
+      where: { id: payrollId, organizationId: ctx.organizationId },
+    });
     if (!payroll) return { success: false, error: "Payroll not found." };
-    if (payroll.status === "PAID")
-      return { success: false, error: "Already paid." };
+    if (payroll.status === "PAID") return { success: false, error: "Already paid." };
 
     const now = new Date();
 
     await db.$transaction([
-      db.payroll.update({
-        where: { id: payrollId },
-        data: { status: "PAID", paidAt: now },
-      }),
+      db.payroll.update({ where: { id: payrollId }, data: { status: "PAID", paidAt: now } }),
       db.expense.create({
         data: {
+          organizationId: ctx.organizationId,
           type: "payroll",
           amount: payroll.totalAmount,
           currency: "NGN",
@@ -250,12 +238,14 @@ export async function markPayrollPaid(payrollId: string) {
 /** Delete a DRAFT payroll */
 export async function deletePayroll(payrollId: string) {
   try {
-    await requireAdmin();
+    const ctx = await requireOrgContext();
+    requireAdmin(ctx.role);
 
-    const payroll = await db.payroll.findUnique({ where: { id: payrollId } });
+    const payroll = await db.payroll.findUnique({
+      where: { id: payrollId, organizationId: ctx.organizationId },
+    });
     if (!payroll) return { success: false, error: "Payroll not found." };
-    if (payroll.status === "PAID")
-      return { success: false, error: "Cannot delete a paid payroll." };
+    if (payroll.status === "PAID") return { success: false, error: "Cannot delete a paid payroll." };
 
     await db.payroll.delete({ where: { id: payrollId } });
     revalidatePath("/dashboard/admin/payroll");
@@ -265,18 +255,18 @@ export async function deletePayroll(payrollId: string) {
   }
 }
 
-/** Get all payrolls with their items */
+/** Get all payrolls for this org */
 export async function getPayrollHistory() {
   try {
-    await requireAdmin();
+    const ctx = await requireOrgContext();
+    requireAdmin(ctx.role);
 
     const payrolls = await db.payroll.findMany({
+      where: { organizationId: ctx.organizationId },
       orderBy: { createdAt: "desc" },
       include: {
         items: {
-          include: {
-            user: { select: { id: true, name: true, role: true } },
-          },
+          include: { user: { select: { id: true, name: true } } },
           orderBy: { totalAmount: "desc" },
         },
         createdBy: { select: { name: true } },
@@ -289,18 +279,17 @@ export async function getPayrollHistory() {
   }
 }
 
-/** Get a single payroll draft for a given month (if exists) */
+/** Get a single payroll for a given month in this org */
 export async function getPayrollByMonth(monthYear: string) {
   try {
-    await requireAdmin();
+    const ctx = await requireOrgContext();
+    requireAdmin(ctx.role);
 
     const payroll = await db.payroll.findUnique({
-      where: { monthYear },
+      where: { organizationId_monthYear: { organizationId: ctx.organizationId, monthYear } },
       include: {
         items: {
-          include: {
-            user: { select: { id: true, name: true, role: true } },
-          },
+          include: { user: { select: { id: true, name: true } } },
           orderBy: { totalAmount: "desc" },
         },
       },
