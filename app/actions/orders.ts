@@ -517,10 +517,10 @@ export async function assignAgentToOrder(
 
     // Verify agent belongs to this org
     const agent = await db.agent.findUnique({
-      where: { id: agentId },
-      select: { organizationId: true },
+      where: { id: agentId, organizationId: ctx.organizationId },
+      select: { id: true },
     });
-    if (!agent || agent.organizationId !== ctx.organizationId) {
+    if (!agent) {
       return { success: false, error: "Agent not found" };
     }
 

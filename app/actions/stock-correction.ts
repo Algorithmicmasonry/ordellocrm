@@ -145,7 +145,7 @@ export async function applyStockCorrections() {
       const correctedStock = product.currentStock + adjustment;
 
       await db.product.update({
-        where: { id: product.id },
+        where: { id: product.id, organizationId: ctx.organizationId },
         data: { currentStock: correctedStock },
       });
 

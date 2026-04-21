@@ -161,15 +161,15 @@ export async function markAsRead(notificationId: string) {
     const ctx = await requireOrgContext();
 
     const notification = await db.notification.findUnique({
-      where: { id: notificationId },
+      where: { id: notificationId, userId: ctx.userId, organizationId: ctx.organizationId },
     });
 
-    if (!notification || notification.userId !== ctx.userId || notification.organizationId !== ctx.organizationId) {
+    if (!notification) {
       return { success: false, error: "Notification not found" };
     }
 
     await db.notification.update({
-      where: { id: notificationId },
+      where: { id: notificationId, userId: ctx.userId, organizationId: ctx.organizationId },
       data: { isRead: true },
     });
 
@@ -209,14 +209,14 @@ export async function deleteNotification(notificationId: string) {
     const ctx = await requireOrgContext();
 
     const notification = await db.notification.findUnique({
-      where: { id: notificationId },
+      where: { id: notificationId, userId: ctx.userId, organizationId: ctx.organizationId },
     });
 
-    if (!notification || notification.userId !== ctx.userId || notification.organizationId !== ctx.organizationId) {
+    if (!notification) {
       return { success: false, error: "Notification not found" };
     }
 
-    await db.notification.delete({ where: { id: notificationId } });
+    await db.notification.delete({ where: { id: notificationId, userId: ctx.userId, organizationId: ctx.organizationId } });
 
     revalidatePath("/dashboard");
     return { success: true };
