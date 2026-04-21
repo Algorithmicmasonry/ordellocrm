@@ -50,7 +50,7 @@ export async function deleteOrder(orderId: string) {
       await restoreInventoryFromDelivery(orderId, ctx.organizationId, ctx.userId);
     }
 
-    await db.order.delete({ where: { id: orderId } });
+    await db.order.delete({ where: { id: orderId, organizationId: ctx.organizationId } });
 
     revalidatePath("/dashboard/admin/orders");
     revalidatePath("/dashboard/admin/inventory");

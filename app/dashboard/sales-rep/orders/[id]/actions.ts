@@ -95,7 +95,7 @@ export async function assignAgent(orderId: string, agentId: string, deliverySlot
     if (!agent) return { success: false, error: "Agent not found" };
 
     const updatedOrder = await db.order.update({
-      where: { id: orderId },
+      where: { id: orderId, organizationId: ctx.organizationId },
       data: { agentId, ...(deliverySlot ? { deliverySlot } : {}) },
     });
 
@@ -142,7 +142,7 @@ export async function updateOrderStatus(orderId: string, status: string, reason?
       case "CANCELLED": updateData.cancelledAt = now; break;
     }
 
-    const updatedOrder = await db.order.update({ where: { id: orderId }, data: updateData });
+    const updatedOrder = await db.order.update({ where: { id: orderId, organizationId: ctx.organizationId }, data: updateData });
 
     if (reason && previousStatus !== status) {
       await db.orderNote.create({
@@ -197,7 +197,7 @@ export async function updateDeliverySlot(orderId: string, deliverySlot: string) 
     });
     if (!order) return { success: false, error: "Order not found" };
 
-    const updatedOrder = await db.order.update({ where: { id: orderId }, data: { deliverySlot } });
+    const updatedOrder = await db.order.update({ where: { id: orderId, organizationId: ctx.organizationId }, data: { deliverySlot } });
     revalidatePath(`/dashboard/sales-rep/orders/${orderId}`);
     return { success: true, data: updatedOrder };
   } catch (error) {
@@ -226,7 +226,7 @@ export async function updateOrder(
     });
     if (!order) return { success: false, error: "Order not found" };
 
-    const updatedOrder = await db.order.update({ where: { id: orderId }, data });
+    const updatedOrder = await db.order.update({ where: { id: orderId, organizationId: ctx.organizationId }, data });
     revalidatePath(`/dashboard/sales-rep/orders/${orderId}`);
     revalidatePath("/dashboard/sales-rep");
     return { success: true, data: updatedOrder };

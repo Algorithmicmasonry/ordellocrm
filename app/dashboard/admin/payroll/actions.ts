@@ -213,7 +213,7 @@ export async function markPayrollPaid(payrollId: string) {
     const now = new Date();
 
     await db.$transaction([
-      db.payroll.update({ where: { id: payrollId }, data: { status: "PAID", paidAt: now } }),
+      db.payroll.update({ where: { id: payrollId, organizationId: ctx.organizationId }, data: { status: "PAID", paidAt: now } }),
       db.expense.create({
         data: {
           organizationId: ctx.organizationId,
@@ -247,7 +247,7 @@ export async function deletePayroll(payrollId: string) {
     if (!payroll) return { success: false, error: "Payroll not found." };
     if (payroll.status === "PAID") return { success: false, error: "Cannot delete a paid payroll." };
 
-    await db.payroll.delete({ where: { id: payrollId } });
+    await db.payroll.delete({ where: { id: payrollId, organizationId: ctx.organizationId } });
     revalidatePath("/dashboard/admin/payroll");
     return { success: true };
   } catch (error) {

@@ -211,7 +211,7 @@ export async function retryAiCall(orderId: string) {
     if (!order) return { success: false as const, error: "Order not found" };
 
     await db.order.update({
-      where: { id: orderId },
+      where: { id: orderId, organizationId: ctx.organizationId },
       data: { aiCallStatus: "PENDING", aiNextCallAt: new Date() },
     });
 
@@ -238,7 +238,7 @@ export async function cancelAiCalls(orderId: string) {
     if (!order) return { success: false as const, error: "Order not found" };
 
     await db.order.update({
-      where: { id: orderId },
+      where: { id: orderId, organizationId: ctx.organizationId },
       data: { aiCallStatus: "COMPLETED", aiNextCallAt: null },
     });
 
@@ -305,7 +305,7 @@ export async function assignToHuman(orderId: string, salesRepId: string) {
 
     await db.$transaction([
       db.order.update({
-        where: { id: orderId },
+        where: { id: orderId, organizationId: ctx.organizationId },
         data: {
           assignedToId: salesRepId,
           aiCallStatus: "COMPLETED",

@@ -11,9 +11,10 @@ interface PageProps {
 }
 
 export async function generateMetadata({ params }: PageProps) {
+  const ctx = await requireOrgContext();
   const { productId } = await params;
   const product = await db.product.findFirst({
-    where: { id: productId },
+    where: { id: productId, organizationId: ctx.organizationId },
     select: { name: true },
   });
 

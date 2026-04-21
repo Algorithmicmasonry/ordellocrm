@@ -183,7 +183,7 @@ export async function toggleAgentStatus(agentId: string) {
     if (!agent) return { success: false, error: "Agent not found" };
 
     const updatedAgent = await db.agent.update({
-      where: { id: agentId },
+      where: { id: agentId, organizationId: ctx.organizationId },
       data: { isActive: !agent.isActive },
     });
 

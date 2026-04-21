@@ -373,7 +373,7 @@ export async function updateOrderStatus(
     }
 
     const updatedOrder = await db.order.update({
-      where: { id: orderId },
+      where: { id: orderId, organizationId: ctx.organizationId },
       data: {
         status,
         ...(status === "CONFIRMED" && { confirmedAt: new Date() }),

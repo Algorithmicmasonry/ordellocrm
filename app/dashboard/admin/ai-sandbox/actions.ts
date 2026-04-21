@@ -42,7 +42,7 @@ export async function deleteSandboxOrder(orderId: string) {
 
     if (!order) return { success: false as const, error: "Sandbox order not found" };
 
-    await db.order.delete({ where: { id: orderId } });
+    await db.order.delete({ where: { id: orderId, organizationId: ctx.organizationId } });
 
     revalidatePath("/dashboard/admin/ai-sandbox");
     return { success: true as const };
