@@ -25,6 +25,7 @@ type Product = {
 export default function OrderFormPageClient() {
   const searchParams = useSearchParams(); // Get search params
   const redirectUrl = searchParams.get("redirectUrl"); // Extract redirectUrl
+  const organizationId = searchParams.get("org") ?? "";
   const submittingRef = useRef(false);
 
   const [products, setProducts] = useState<Product[]>([]);
@@ -65,7 +66,11 @@ export default function OrderFormPageClient() {
   }, []);
 
   async function loadProducts() {
-    const result = await getActiveProducts();
+    if (!organizationId) {
+      setError("Invalid order form link. Please use the link provided by the store.");
+      return;
+    }
+    const result = await getActiveProducts(organizationId);
     if (result.success && result.products && result.products.length > 0) {
       setProducts(result.products);
       // Auto-select the first product
@@ -136,6 +141,7 @@ export default function OrderFormPageClient() {
       : undefined;
 
     const result = await createOrderV2({
+      organizationId,
       customerName: formData.customerName,
       customerPhone: fullPhone,
       customerWhatsapp: fullWhatsapp,
