@@ -24,7 +24,7 @@ import {
 } from "@/components/ui/table";
 import { formatCurrency } from "@/lib/currency";
 import { TimePeriod } from "@/lib/types";
-import type { User, Currency } from "@prisma/client";
+import type { Currency } from "@prisma/client";
 import {
   ArrowDownRight,
   ArrowUpRight,
@@ -47,7 +47,14 @@ import toast from "react-hot-toast";
 import { DashboardHeader, PeriodFilter, DateRangePicker } from "../../_components";
 import { AddSalesRepModal, EditSalesRepModal } from "./";
 
-type SalesRepWithStats = User & {
+type SalesRepWithStats = {
+  id: string;
+  name: string;
+  email: string;
+  image: string | null;
+  createdAt: Date;
+  isActive: boolean;
+  orders: any[];
   stats: {
     totalOrders: number;
     deliveredOrders: number;
@@ -60,7 +67,6 @@ type SalesRepWithStats = User & {
       revenue: number | null;
     };
   };
-  orders: any[];
 };
 
 interface SalesRepsPageProps {

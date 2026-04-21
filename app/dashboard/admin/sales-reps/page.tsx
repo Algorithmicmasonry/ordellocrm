@@ -23,7 +23,7 @@ async function getSalesRepsData(organizationId: string, period: TimePeriod = "mo
   // Fetch all sales rep members for this org
   const members = await db.organizationMember.findMany({
     where: { organizationId, role: "SALES_REP", isActive: true, isAiAgent: false },
-    include: { user: { select: { id: true, name: true, email: true, image: true, createdAt: true, isActive: true } } },
+    include: { user: { select: { id: true, name: true, email: true, image: true, createdAt: true } } },
     orderBy: { user: { name: "asc" } },
   });
 
@@ -60,6 +60,7 @@ async function getSalesRepsData(organizationId: string, period: TimePeriod = "mo
   // Build salesReps shape matching the original (user + orders)
   const salesReps = members.map((m) => ({
     ...m.user,
+    isActive: m.isActive,
     orders: ordersByRep.get(m.userId) ?? [],
   }));
 
