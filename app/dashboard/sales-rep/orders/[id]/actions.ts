@@ -151,13 +151,15 @@ export async function updateOrderStatus(orderId: string, status: string, reason?
     }
 
     if (status === "DELIVERED" && previousStatus !== "DELIVERED") {
-      await notifyAdmins({
-        title: `Order #${updatedOrder.orderNumber}`,
-        body: `Order has been delivered to ${updatedOrder.customerName}`,
-        url: `/dashboard/admin/orders/${updatedOrder.id}`,
-        orderId: updatedOrder.id,
-        organizationId: ctx.organizationId,
-      });
+      await notifyAdmins(
+        {
+          title: `Order #${updatedOrder.orderNumber}`,
+          body: `Order has been delivered to ${updatedOrder.customerName}`,
+          url: `/dashboard/admin/orders/${updatedOrder.id}`,
+          orderId: updatedOrder.id,
+        },
+        ctx.organizationId,
+      );
 
       // Use OrganizationMember to find admins — role lives there in multi-tenant
       const adminMembers = await db.organizationMember.findMany({
