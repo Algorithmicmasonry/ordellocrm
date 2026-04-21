@@ -1,3 +1,5 @@
+import { redirect } from "next/navigation"
+import { requireOrgContext } from "@/lib/org-context"
 import { DashboardHeader } from "../../_components"
 import { getStockMovements, getProductsForFilter } from "@/app/actions/stock-movements"
 import StockHistoryClient from "./_components/stock-history-client"
@@ -10,6 +12,11 @@ export const metadata = {
 }
 
 export default async function StockHistoryPage() {
+  const ctx = await requireOrgContext()
+  if (ctx.role !== "ADMIN" && ctx.role !== "OWNER") {
+    redirect("/dashboard")
+  }
+
   const [movementsResult, productsResult] = await Promise.all([
     getStockMovements({ page: 1 }),
     getProductsForFilter(),
