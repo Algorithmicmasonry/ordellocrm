@@ -48,7 +48,18 @@ import {
     TableRow,
 } from "@/components/ui/table";
 import { formatRole, getInitials } from "@/lib/utils";
-import { User, OrgMemberRole } from "@prisma/client";
+import { OrgMemberRole } from "@prisma/client";
+
+interface UserWithMember {
+  id: string;
+  name: string;
+  email: string;
+  image: string | null;
+  createdAt: Date;
+  role: OrgMemberRole;
+  isActive: boolean;
+  isAiAgent: boolean;
+}
 import {
     Bot,
     ChevronLeft,
@@ -84,7 +95,7 @@ import { AddUserModal } from "./add-user-modal";
 import { EditUserModal } from "./edit-user-modal";
 
 interface UsersClientProps {
-  users: User[];
+  users: UserWithMember[];
   ghanaManagerId: string | null;
   aiAgentId: string | null;
   stats: {
@@ -103,11 +114,10 @@ interface UsersClientProps {
 }
 
 const roleColors: Record<OrgMemberRole, string> = {
-  ADMIN:
-    "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400",
+  OWNER: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400",
+  ADMIN: "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400",
   SALES_REP: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
-  INVENTORY_MANAGER:
-    "bg-slate-100 text-slate-700 dark:bg-slate-900/30 dark:text-slate-400",
+  INVENTORY_MANAGER: "bg-slate-100 text-slate-700 dark:bg-slate-900/30 dark:text-slate-400",
 };
 
 const PIE_COLORS = ["#137fec", "#818cf8", "#cbd5e1"];
@@ -127,11 +137,11 @@ export default function UsersClient({
   const [currentPage, setCurrentPage] = useState(1);
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [editModalOpen, setEditModalOpen] = useState(false);
-  const [selectedUser, setSelectedUser] = useState<User | null>(null);
+  const [selectedUser, setSelectedUser] = useState<UserWithMember | null>(null);
   const [isPending, startTransition] = useTransition();
   const [togglingUserId, setTogglingUserId] = useState<string | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [userToDelete, setUserToDelete] = useState<User | null>(null);
+  const [userToDelete, setUserToDelete] = useState<UserWithMember | null>(null);
   const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
   const [passwordResetDialogOpen, setPasswordResetDialogOpen] = useState(false);
   const [tempPassword, setTempPassword] = useState<string>("");

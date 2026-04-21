@@ -32,7 +32,6 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import toast from "react-hot-toast";
 import { updateUser } from "@/app/actions/user";
-import { User, OrgMemberRole } from "@prisma/client";
 
 const editUserSchema = z.object({
   name: z.string().min(1, "Name is required"),
@@ -44,10 +43,18 @@ const editUserSchema = z.object({
 
 type EditUserFormValues = z.infer<typeof editUserSchema>;
 
+interface UserForEdit {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  isActive: boolean;
+}
+
 interface EditUserModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  user: User | null;
+  user: UserForEdit | null;
 }
 
 export function EditUserModal({
