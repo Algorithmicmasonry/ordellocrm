@@ -123,7 +123,7 @@ export async function assignStockToAgent(
     }
 
     const updatedProduct = await db.product.update({
-      where: { id: productId },
+      where: { id: productId, organizationId: ctx.organizationId },
       data: { currentStock: { decrement: quantity } },
     })
 
@@ -272,7 +272,7 @@ export async function deleteAgent(agentId: string) {
       }
     }
 
-    await db.agent.delete({ where: { id: agentId } })
+    await db.agent.delete({ where: { id: agentId, organizationId: ctx.organizationId } })
 
     revalidatePath("/dashboard/admin/agents")
     return { success: true, message: "Agent deleted successfully" }
@@ -334,7 +334,7 @@ export async function reconcileAgentStock(data: {
 
       if (data.returnedQuantity && data.returnedQuantity > 0) {
         const updatedProduct = await tx.product.update({
-          where: { id: data.productId },
+          where: { id: data.productId, organizationId: ctx.organizationId },
           data: { currentStock: { increment: data.returnedQuantity } },
         })
 

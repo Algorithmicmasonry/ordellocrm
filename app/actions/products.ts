@@ -107,7 +107,7 @@ export async function updateProduct(
       const { price, cost, currency, ...productDataWithoutPricing } = data;
 
       const updatedProduct = await tx.product.update({
-        where: { id: productId },
+        where: { id: productId, organizationId: ctx.organizationId },
         data: {
           ...productDataWithoutPricing,
           ...(currency && { currency }),
@@ -168,7 +168,7 @@ export async function addStock(productId: string, quantity: number) {
     if (!exists) return { success: false, error: "Product not found" };
 
     const product = await db.product.update({
-      where: { id: productId },
+      where: { id: productId, organizationId: ctx.organizationId },
       data: { currentStock: { increment: quantity } },
     });
 
@@ -266,7 +266,7 @@ export async function softDeleteProduct(productId: string) {
     if (!product) return { success: false, error: "Product not found" };
 
     const updatedProduct = await db.product.update({
-      where: { id: productId },
+      where: { id: productId, organizationId: ctx.organizationId },
       data: { isDeleted: true, deletedAt: new Date() },
     });
 
@@ -338,7 +338,7 @@ export async function updatePackageSelectorNote(
     if (!product) return { success: false, error: "Product not found" };
 
     const updatedProduct = await db.product.update({
-      where: { id: productId },
+      where: { id: productId, organizationId: ctx.organizationId },
       data: { packageSelectorNote: note },
     });
 

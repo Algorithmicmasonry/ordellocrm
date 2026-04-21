@@ -145,7 +145,7 @@ export async function updateExpense(
     if (!existing) return { success: false, error: "Expense not found" }
 
     const expense = await db.expense.update({
-      where: { id: expenseId },
+      where: { id: expenseId, organizationId: ctx.organizationId },
       data,
     })
 
@@ -176,7 +176,7 @@ export async function deleteExpense(expenseId: string) {
     })
     if (!existing) return { success: false, error: "Expense not found" }
 
-    await db.expense.delete({ where: { id: expenseId } })
+    await db.expense.delete({ where: { id: expenseId, organizationId: ctx.organizationId } })
 
     revalidatePath("/dashboard/admin/expenses")
     revalidatePath("/dashboard/admin")

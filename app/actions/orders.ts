@@ -74,11 +74,11 @@ export async function createOrder(
 
     for (const item of data.items) {
       const product = await db.product.findUnique({
-        where: { id: item.productId },
+        where: { id: item.productId, organizationId },
         include: { productPrices: true },
       });
 
-      if (!product || product.organizationId !== organizationId) {
+      if (!product) {
         return { success: false, error: `Product not found: ${item.productId}` };
       }
 
@@ -235,7 +235,7 @@ export async function createOrderV2(
 
     console.log(`${logPrefix} | fetching product + packages`);
     const product = await db.product.findUnique({
-      where: { id: data.productId },
+      where: { id: data.productId, organizationId },
       include: {
         packages: {
           where: { id: { in: data.selectedPackages }, isActive: true, currency: data.currency },
@@ -252,7 +252,7 @@ export async function createOrderV2(
       },
     });
 
-    if (!product || product.organizationId !== organizationId) {
+    if (!product) {
       return { success: false, error: "Product not found" };
     }
 
@@ -470,7 +470,7 @@ export async function updateOrderStatus(
     else if (status === OrderStatus.CANCELLED) updateData.cancelledAt = new Date();
 
     const updatedOrder = await db.order.update({
-      where: { id: orderId },
+      where: { id: orderId, organizationId: ctx.organizationId },
       data: updateData,
       include: {
         items: { include: { product: true } },
@@ -525,7 +525,7 @@ export async function assignAgentToOrder(
     }
 
     const updatedOrder = await db.order.update({
-      where: { id: orderId },
+      where: { id: orderId, organizationId: ctx.organizationId },
       data: { agentId },
       include: { agent: true },
     });
