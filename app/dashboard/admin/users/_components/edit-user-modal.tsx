@@ -32,6 +32,7 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import toast from "react-hot-toast";
 import { updateUser } from "@/app/actions/user";
+import { OrgMemberRole } from "@prisma/client";
 
 const editUserSchema = z.object({
   name: z.string().min(1, "Name is required"),
@@ -47,7 +48,7 @@ interface UserForEdit {
   id: string;
   name: string;
   email: string;
-  role: string;
+  role: OrgMemberRole;
   isActive: boolean;
 }
 
@@ -83,7 +84,7 @@ export function EditUserModal({
         name: user.name,
         email: user.email,
         password: "",
-        role: user.role,
+        role: user.role as "ADMIN" | "SALES_REP" | "INVENTORY_MANAGER",
         isActive: user.isActive,
       });
     }
