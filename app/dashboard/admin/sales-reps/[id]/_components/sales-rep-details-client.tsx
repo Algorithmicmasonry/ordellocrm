@@ -28,7 +28,6 @@ import {
 import { format } from "date-fns";
 import Link from "next/link";
 import type {
-  User,
   Order,
   OrderStatus,
   OrderSource,
@@ -46,7 +45,12 @@ import {
   formatDateForExport,
 } from "@/lib/export-utils";
 
-type SalesRepWithDetails = User & {
+type SalesRepWithDetails = {
+  id: string;
+  name: string;
+  email: string;
+  image: string | null;
+  createdAt: Date;
   isActive: boolean;
   orders: (Order & {
     _count?: {
