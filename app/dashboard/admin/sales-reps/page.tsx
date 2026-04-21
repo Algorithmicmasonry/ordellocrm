@@ -61,6 +61,7 @@ async function getSalesRepsData(organizationId: string, period: TimePeriod = "mo
   const salesReps = members.map((m) => ({
     ...m.user,
     isActive: m.isActive,
+    role: m.role,
     orders: ordersByRep.get(m.userId) ?? [],
   }));
 

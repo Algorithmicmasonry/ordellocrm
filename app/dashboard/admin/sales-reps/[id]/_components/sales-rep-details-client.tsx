@@ -52,6 +52,7 @@ type SalesRepWithDetails = {
   image: string | null;
   createdAt: Date;
   isActive: boolean;
+  role: string;
   orders: (Order & {
     _count?: {
       items: number;

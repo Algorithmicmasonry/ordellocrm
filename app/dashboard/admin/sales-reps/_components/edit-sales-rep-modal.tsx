@@ -32,7 +32,6 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import toast from "react-hot-toast";
 import { updateSalesRep } from "@/app/actions/user";
-import type { User } from "@prisma/client";
 
 const editSalesRepSchema = z.object({
   name: z.string().min(1, "Name is required"),
@@ -48,10 +47,18 @@ const editSalesRepSchema = z.object({
 
 type EditSalesRepFormValues = z.infer<typeof editSalesRepSchema>;
 
+interface SalesRepForEdit {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  isActive: boolean;
+}
+
 interface EditSalesRepModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  salesRep: User | null;
+  salesRep: SalesRepForEdit | null;
 }
 
 export function EditSalesRepModal({

@@ -44,7 +44,7 @@ async function getSalesRepDetails(organizationId: string, repId: string, period:
     orderBy: { createdAt: "desc" },
   });
 
-  const salesRep = { ...member.user, isActive: member.isActive, orders: salesRepOrders };
+  const salesRep = { ...member.user, isActive: member.isActive, role: member.role, orders: salesRepOrders };
 
   // Split orders into current and previous periods
   const currentOrders = salesRep.orders.filter(

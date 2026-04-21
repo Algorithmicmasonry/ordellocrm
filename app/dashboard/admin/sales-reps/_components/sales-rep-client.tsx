@@ -54,6 +54,7 @@ type SalesRepWithStats = {
   image: string | null;
   createdAt: Date;
   isActive: boolean;
+  role: string;
   orders: any[];
   stats: {
     totalOrders: number;
