@@ -28,7 +28,7 @@ async function getRoundRobinData(organizationId: string) {
     select: { assignedToId: true, status: true },
   });
 
-  const ordersByRep = new Map<string, { id: string; status: string }[]>();
+  const ordersByRep = new Map<string, { assignedToId: string | null; status: string }[]>();
   for (const m of members) ordersByRep.set(m.userId, []);
   for (const o of orders) {
     if (o.assignedToId) ordersByRep.get(o.assignedToId)?.push(o);
