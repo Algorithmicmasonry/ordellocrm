@@ -5,12 +5,12 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { PayrollDetailDialog } from "./payroll-detail-dialog";
 import { formatRole } from "@/lib/utils";
-import type { UserRole } from "@prisma/client";
+import type { OrgMemberRole } from "@prisma/client";
 
 interface PayrollItem {
   id: string;
   userId: string;
-  user: { id: string; name: string; role: UserRole };
+  user: { id: string; name: string; role: OrgMemberRole };
   ordersDelivered: number;
   ratePerOrder: number;
   baseAmount: number;

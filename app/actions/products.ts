@@ -1,7 +1,7 @@
 "use server";
 
 import { db } from "@/lib/db";
-import { revalidatePath, revalidateTag } from "next/cache";
+import { revalidatePath } from "next/cache";
 import { logStockMovement } from "@/lib/stock-movements";
 import { requireOrgContext } from "@/lib/org-context";
 import type { Currency } from "@prisma/client";
@@ -52,8 +52,6 @@ export async function createProduct(data: {
           currentStock: data.openingStock,
           reorderPoint: data.reorderPoint ?? 0,
           isActive: data.isActive ?? true,
-          price: null,
-          cost: null,
         },
       });
 
@@ -143,7 +141,7 @@ export async function updateProduct(
     revalidatePath("/dashboard/admin/inventory");
     revalidatePath("/dashboard/inventory");
     revalidatePath(`/dashboard/admin/inventory/${productId}/pricing`);
-    revalidateTag("products");
+
     return { success: true, product };
   } catch (error) {
     console.error("Error updating product:", error);
@@ -273,7 +271,7 @@ export async function softDeleteProduct(productId: string) {
     });
 
     revalidatePath("/dashboard/admin/inventory");
-    revalidateTag("products");
+
     return { success: true, product: updatedProduct };
   } catch (error) {
     console.error("Error deleting product:", error);
@@ -345,7 +343,7 @@ export async function updatePackageSelectorNote(
     });
 
     revalidatePath(`/dashboard/admin/inventory/${productId}/packages`);
-    revalidateTag("products");
+
     return { success: true, product: updatedProduct };
   } catch (error) {
     console.error("Error updating package selector note:", error);

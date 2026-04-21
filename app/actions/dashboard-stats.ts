@@ -327,7 +327,7 @@ export async function getRecentOrders(limit: number = 5) {
       assignedTo: { select: { id: true, name: true, email: true } },
       agent: { select: { id: true, name: true, location: true } },
       items: {
-        include: { product: { select: { id: true, name: true, price: true } } },
+        include: { product: { select: { id: true, name: true } } },
       },
       notes: true,
     },

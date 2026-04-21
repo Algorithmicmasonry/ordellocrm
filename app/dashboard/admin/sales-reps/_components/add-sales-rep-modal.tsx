@@ -31,7 +31,7 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import toast from "react-hot-toast";
 import { createSalesRep } from "@/app/actions/user";
-import { UserRole } from "@prisma/client";
+import { OrgMemberRole } from "@prisma/client";
 
 const salesRepSchema = z.object({
   name: z.string().min(1, "Name is required"),

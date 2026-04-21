@@ -261,6 +261,12 @@ model User {
   // Org memberships (role + isAiAgent live here, not on User)
   memberships OrganizationMember[]
 
+  // Orders assigned to this user as a sales rep
+  orders         Order[]
+  salesRepRates  SalesRepRate[]
+  payrollItems   PayrollItem[]
+  headOfHouseRecords HeadOfHouse[]
+
   pushSubscriptions PushSubscription[]
   notifications     Notification[]
 

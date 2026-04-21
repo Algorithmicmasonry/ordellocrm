@@ -1,20 +1,30 @@
-"use server"
+"use server";
 
-import { db } from "./db"
+import { db } from "./db";
 
-export type TokenPackId = "pack_50" | "pack_150" | "pack_500"
+export type TokenPackId = "pack_50" | "pack_150" | "pack_500";
 
-export const TOKEN_PACKS: Record<TokenPackId, { tokens: number; amount: number; label: string; perMin: string }> = {
-  pack_50:  { tokens: 50,  amount: 900000,  label: "Starter",    perMin: "₦180/min" },
-  pack_150: { tokens: 150, amount: 2500000, label: "Standard",   perMin: "₦167/min" },
-  pack_500: { tokens: 500, amount: 7500000, label: "Pro",        perMin: "₦150/min" },
-}
+export const TOKEN_PACKS: Record<
+  TokenPackId,
+  { tokens: number; amount: number; label: string; perMin: string }
+> = {
+  pack_50: { tokens: 50, amount: 900000, label: "Starter", perMin: "₦180/min" },
+  pack_150: {
+    tokens: 150,
+    amount: 2500000,
+    label: "Standard",
+    perMin: "₦167/min",
+  },
+  pack_500: { tokens: 500, amount: 7500000, label: "Pro", perMin: "₦150/min" },
+};
 
 /**
  * Deduct tokens from an org's balance after a Vapi call ends.
  * durationSecs is rounded UP to the nearest minute.
  * Returns false if the org has insufficient tokens (shouldn't block the call — just log it).
  */
+
+// Todo: ADd push notifications and emails to admins
 export async function deductTokens(
   organizationId: string,
   tokensToDeduct: number,
@@ -25,11 +35,11 @@ export async function deductTokens(
   const org = await db.organization.findUnique({
     where: { id: organizationId },
     select: { aiTokenBalance: true },
-  })
+  });
 
-  if (!org) return false
+  if (!org) return false;
 
-  const balanceAfter = Math.max(0, org.aiTokenBalance - tokensToDeduct)
+  const balanceAfter = Math.max(0, org.aiTokenBalance - tokensToDeduct);
 
   await db.$transaction([
     db.organization.update({
@@ -47,14 +57,16 @@ export async function deductTokens(
         orderId: orderId ?? null,
       },
     }),
-  ])
+  ]);
 
   // Warn if balance is low
   if (balanceAfter <= 10) {
-    console.warn(`[ai-tokens] Org ${organizationId} has ${balanceAfter} tokens remaining`)
+    console.warn(
+      `[ai-tokens] Org ${organizationId} has ${balanceAfter} tokens remaining`,
+    );
   }
 
-  return true
+  return true;
 }
 
 /**
@@ -69,11 +81,11 @@ export async function creditTokens(
   const org = await db.organization.findUnique({
     where: { id: organizationId },
     select: { aiTokenBalance: true },
-  })
+  });
 
-  if (!org) return
+  if (!org) return;
 
-  const balanceAfter = org.aiTokenBalance + tokens
+  const balanceAfter = org.aiTokenBalance + tokens;
 
   await db.$transaction([
     db.organization.update({
@@ -90,5 +102,5 @@ export async function creditTokens(
         paystackRef,
       },
     }),
-  ])
+  ]);
 }

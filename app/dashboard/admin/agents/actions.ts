@@ -18,7 +18,7 @@ export async function getAgentStats(currency?: Currency) {
       db.agent.count({ where: { organizationId: ctx.organizationId } }),
       db.agent.count({ where: { organizationId: ctx.organizationId, isActive: true } }),
       db.agentStock.findMany({
-        where: { organizationId: ctx.organizationId },
+        where: { agent: { organizationId: ctx.organizationId } },
         include: {
           product: { include: { productPrices: true } },
         },

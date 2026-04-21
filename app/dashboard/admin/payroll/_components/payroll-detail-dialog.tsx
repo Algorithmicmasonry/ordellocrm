@@ -13,13 +13,13 @@ import { markPayrollPaid, deletePayroll } from "../actions";
 import { toast } from "sonner";
 import { useState } from "react";
 import { formatRole } from "@/lib/utils";
-import type { UserRole } from "@prisma/client";
+import type { OrgMemberRole } from "@prisma/client";
 
 interface PayrollItem {
   id: string;
   userId: string;
   userName: string;
-  userRole: UserRole;
+  userRole: OrgMemberRole;
   ordersDelivered: number;
   ratePerOrder: number;
   baseAmount: number;

@@ -2,12 +2,12 @@
 
 import { Badge } from "@/components/ui/badge";
 import { formatRole } from "@/lib/utils";
-import type { UserRole } from "@prisma/client";
+import type { OrgMemberRole } from "@prisma/client";
 
 export interface PreviewItem {
   userId: string;
   userName: string;
-  userRole: UserRole;
+  userRole: OrgMemberRole;
   ordersDelivered: number;
   ratePerOrder: number;
   baseAmount: number;

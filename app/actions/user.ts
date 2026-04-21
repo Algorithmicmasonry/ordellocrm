@@ -19,10 +19,23 @@ export async function getCurrentUser() {
 
     const user = await db.user.findUnique({
       where: { id: session.user.id },
-      select: { id: true, name: true, email: true, image: true },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        image: true,
+        memberships: {
+          where: { isActive: true },
+          select: { role: true },
+          orderBy: { createdAt: "asc" },
+          take: 1,
+        },
+      },
     });
 
-    return user;
+    if (!user) return null;
+    const { memberships, ...rest } = user;
+    return { ...rest, role: memberships[0]?.role ?? null };
   } catch (error) {
     console.error("Error fetching current user:", error);
     return null;

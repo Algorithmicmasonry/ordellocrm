@@ -28,7 +28,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
 import { getCurrentUser } from "@/app/actions/user";
-import type { UserRole } from "@prisma/client";
+import type { OrgMemberRole } from "@prisma/client";
 import { authClient } from "@/lib/auth-client";
 
 const routes = [
@@ -53,7 +53,7 @@ interface UserData {
   id: string;
   name: string;
   email: string;
-  role: UserRole;
+  role: OrgMemberRole | null;
   image: string | null;
 }
 
@@ -198,7 +198,7 @@ export function Sidebar() {
                 <div className="flex-1 min-w-0">
                   <p className="text-xs font-semibold truncate">{user.name}</p>
                   <p className="text-[10px] text-muted-foreground truncate">
-                    {formatRole(user.role)}
+                    {user.role ? formatRole(user.role) : ""}
                   </p>
                 </div>
               )}

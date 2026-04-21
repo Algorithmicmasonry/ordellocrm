@@ -32,7 +32,7 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import toast from "react-hot-toast";
 import { updateUser } from "@/app/actions/user";
-import { User, UserRole } from "@prisma/client";
+import { User, OrgMemberRole } from "@prisma/client";
 
 const editUserSchema = z.object({
   name: z.string().min(1, "Name is required"),

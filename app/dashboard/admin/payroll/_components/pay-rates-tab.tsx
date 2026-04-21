@@ -5,13 +5,13 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { SetRateDialog } from "./set-rate-dialog";
 import { formatRole } from "@/lib/utils";
-import type { UserRole } from "@prisma/client";
+import type { OrgMemberRole } from "@prisma/client";
 
 interface RepWithRate {
   id: string;
   name: string;
   email: string;
-  role: UserRole;
+  role: OrgMemberRole;
   rate: {
     ratePerOrder: number;
     updatedAt: Date;

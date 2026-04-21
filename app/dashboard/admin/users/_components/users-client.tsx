@@ -48,7 +48,7 @@ import {
     TableRow,
 } from "@/components/ui/table";
 import { formatRole, getInitials } from "@/lib/utils";
-import { User, UserRole } from "@prisma/client";
+import { User, OrgMemberRole } from "@prisma/client";
 import {
     Bot,
     ChevronLeft,
@@ -102,7 +102,7 @@ interface UsersClientProps {
   monthlyGrowth: Array<{ month: string; users: number }>;
 }
 
-const roleColors: Record<UserRole, string> = {
+const roleColors: Record<OrgMemberRole, string> = {
   ADMIN:
     "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400",
   SALES_REP: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",

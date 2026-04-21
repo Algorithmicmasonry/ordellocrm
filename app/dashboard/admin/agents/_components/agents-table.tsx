@@ -98,6 +98,7 @@ const toPrismaAgent = (agent: Agent | null): PrismaAgent | null => {
   if (!agent) return null;
   return {
     id: agent.id,
+    organizationId: "",
     name: agent.name,
     phone: agent.phone,
     location: agent.location,

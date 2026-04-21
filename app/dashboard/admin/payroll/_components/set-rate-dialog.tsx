@@ -14,14 +14,14 @@ import { Label } from "@/components/ui/label";
 import { setRepRate } from "../actions";
 import { toast } from "sonner";
 import { formatRole } from "@/lib/utils";
-import type { UserRole } from "@prisma/client";
+import type { OrgMemberRole } from "@prisma/client";
 
 interface Props {
   open: boolean;
   onClose: () => void;
   userId: string;
   userName: string;
-  userRole: UserRole;
+  userRole: OrgMemberRole;
   currentRate: number | null;
 }
 

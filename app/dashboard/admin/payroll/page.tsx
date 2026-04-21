@@ -8,7 +8,7 @@ import {
   getPayrollByMonth,
 } from "./actions";
 import { PayRatesTab, RunPayrollTab, PayrollHistoryTab } from "./_components";
-import type { UserRole } from "@prisma/client";
+import type { OrgMemberRole } from "@prisma/client";
 
 interface PageProps {
   searchParams: Promise<{ tab?: string; month?: string }>;
@@ -54,7 +54,7 @@ export default async function PayrollPage({ searchParams }: PageProps) {
                 id: string;
                 name: string;
                 email: string;
-                role: UserRole;
+                role: OrgMemberRole;
                 rate: { ratePerOrder: number; updatedAt: Date } | null;
               }>}
             />
@@ -80,7 +80,7 @@ export default async function PayrollPage({ searchParams }: PageProps) {
                       id: item.id,
                       userId: item.userId,
                       userName: item.user.name,
-                      userRole: item.user.role as UserRole,
+                      userRole: "SALES_REP" as OrgMemberRole,
                       ordersDelivered: item.ordersDelivered,
                       ratePerOrder: item.ratePerOrder,
                       baseAmount: item.baseAmount,

@@ -14,14 +14,18 @@ import {
   SkipForward,
   Eye,
 } from "lucide-react";
-import { User } from "@prisma/client";
 import { getInitials } from "@/lib/utils";
 import Link from "next/link";
 import toast from "react-hot-toast";
 import { skipCurrentRep, toggleRepInclusion } from "@/app/actions/round-robin";
 import { ResetModal } from "./reset-modal";
 
-interface SalesRepWithStats extends User {
+interface SalesRepWithStats {
+  id: string;
+  name: string;
+  email: string;
+  image: string | null;
+  isActive: boolean;
   totalOrders: number;
   deliveredOrders: number;
   isOnline: boolean;

@@ -3,7 +3,7 @@ import {
   OrderStatus,
   OrderSource,
   User,
-  UserRole,
+  OrgMemberRole,
   Product,
   ProductPackage,
   ProductPackageComponent,
@@ -152,7 +152,7 @@ export interface RecentOrder {
   status: OrderStatus;
 }
 
-export { OrderStatus, OrderSource, UserRole, Currency };
+export { OrderStatus, OrderSource, OrgMemberRole, Currency };
 
 export type OrderWithRelations = Order & {
   assignedTo: Pick<User, "id" | "name" | "email"> | null;

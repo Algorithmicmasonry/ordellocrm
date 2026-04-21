@@ -269,7 +269,6 @@ export async function getPayrollHistory() {
           include: { user: { select: { id: true, name: true } } },
           orderBy: { totalAmount: "desc" },
         },
-        createdBy: { select: { name: true } },
       },
     });
 

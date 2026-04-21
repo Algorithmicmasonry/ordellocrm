@@ -1258,7 +1258,7 @@ export async function getProductProfitability(
 
     const products = await db.product.findMany({
       where: { organizationId: ctx.organizationId },
-      select: { id: true, name: true, sku: true, price: true, cost: true },
+      select: { id: true, name: true, sku: true },
     });
 
     const deliveredOrders = await db.order.findMany({

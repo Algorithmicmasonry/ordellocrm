@@ -31,7 +31,6 @@ type OrderWithRelations = Prisma.OrderGetPayload<{
           select: {
             id: true;
             name: true;
-            price: true;
           };
         };
       };
@@ -153,7 +152,7 @@ export async function getOrders(
         agent: { select: { id: true, name: true, location: true } },
         items: {
           include: {
-            product: { select: { id: true, name: true, price: true } },
+            product: { select: { id: true, name: true } },
           },
         },
       },
@@ -427,7 +426,7 @@ export async function getOrdersByProduct(
       order: {
         organizationId: ctx.organizationId,
         createdAt: { gte: start, lte: end },
-        ...(currency ? { currency } : {}),
+        ...(currency ? { currency: currency as import("@prisma/client").Currency } : {}),
       },
     };
 

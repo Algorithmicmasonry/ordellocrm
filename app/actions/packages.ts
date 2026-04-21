@@ -1,7 +1,7 @@
 "use server";
 
 import { db } from "@/lib/db";
-import { revalidatePath, revalidateTag } from "next/cache";
+import { revalidatePath } from "next/cache";
 import { requireOrgContext } from "@/lib/org-context";
 import type { Currency } from "@prisma/client";
 
@@ -205,7 +205,7 @@ export async function createPackage({
 
     revalidatePath("/dashboard/admin/inventory");
     revalidatePath(`/dashboard/admin/inventory/${productId}/packages`);
-    revalidateTag("products");
+
 
     return { success: true, data: package_ };
   } catch (error) {
@@ -335,7 +335,7 @@ export async function updatePackage({
 
     revalidatePath("/dashboard/admin/inventory");
     revalidatePath(`/dashboard/admin/inventory/${existing.productId}/packages`);
-    revalidateTag("products");
+
 
     return { success: true, data: package_ };
   } catch (error) {
@@ -368,7 +368,7 @@ export async function deletePackage(id: string) {
 
     revalidatePath("/dashboard/admin/inventory");
     revalidatePath(`/dashboard/admin/inventory/${existing.productId}/packages`);
-    revalidateTag("products");
+
 
     return { success: true };
   } catch (error) {
@@ -401,7 +401,7 @@ export async function togglePackageStatus(id: string) {
 
     revalidatePath("/dashboard/admin/inventory");
     revalidatePath(`/dashboard/admin/inventory/${package_.productId}/packages`);
-    revalidateTag("products");
+
 
     return { success: true, data: updated };
   } catch (error) {
