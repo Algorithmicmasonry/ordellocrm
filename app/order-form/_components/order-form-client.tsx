@@ -91,7 +91,7 @@ export default function OrderFormPageClient() {
     if (!productId) return;
 
     setLoadingPackages(true);
-    const result = await getProductWithPackages(productId);
+    const result = await getProductWithPackages(productId, organizationId);
     setLoadingPackages(false);
 
     if (result.success && result.data) {

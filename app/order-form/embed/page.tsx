@@ -91,7 +91,7 @@ export default async function EmbedOrderFormPage({
       <Suspense
         fallback={<div className="p-6 text-center">Loading order form…</div>}
       >
-        <EmbedOrderFormClient product={product} currency={currency} />
+        <EmbedOrderFormClient product={product} currency={currency} organizationId={product.organizationId} />
       </Suspense>
     </>
   );

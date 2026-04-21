@@ -11,11 +11,13 @@ import React from "react";
 interface SandboxOrderFormClientProps {
   product: ProductWithPackages;
   currency: Currency;
+  organizationId: string;
 }
 
 export function SandboxOrderFormClient({
   product,
   currency,
+  organizationId,
 }: SandboxOrderFormClientProps) {
   const [selectedPackageId, setSelectedPackageId] = useState<string>("");
   const [loading, setLoading] = useState(false);
@@ -70,6 +72,7 @@ export function SandboxOrderFormClient({
 
     try {
       const result = await createOrderV2({
+        organizationId,
         customerName: formData.customerName,
         customerPhone: normalizePhone(formData.customerPhone),
         customerWhatsapp: formData.customerWhatsapp

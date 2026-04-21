@@ -66,7 +66,7 @@ export default async function SandboxOrderFormPage({
 
   return (
     <Suspense fallback={<div className="p-6 text-center">Loading sandbox form…</div>}>
-      <SandboxOrderFormClient product={product} currency={currency} />
+      <SandboxOrderFormClient product={product} currency={currency} organizationId={product.organizationId} />
     </Suspense>
   );
 }

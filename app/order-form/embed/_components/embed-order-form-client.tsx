@@ -13,11 +13,13 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 interface EmbedOrderFormClientProps {
   product: ProductWithPackages;
   currency: Currency;
+  organizationId: string;
 }
 
 export function EmbedOrderFormClient({
   product,
   currency,
+  organizationId,
 }: EmbedOrderFormClientProps) {
   const [selectedPackageId, setSelectedPackageId] = useState<string>("");
   const [loading, setLoading] = useState(false);
@@ -140,6 +142,7 @@ export function EmbedOrderFormClient({
 
     try {
       const result = await createOrderV2({
+        organizationId,
         customerName: formData.customerName,
         customerPhone: normalizePhone(formData.customerPhone),
         customerWhatsapp: formData.customerWhatsapp ? normalizePhone(formData.customerWhatsapp) : undefined,
