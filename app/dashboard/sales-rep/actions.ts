@@ -5,7 +5,7 @@ import { requireOrgContext } from "@/lib/org-context";
 import { revalidatePath } from "next/cache";
 import { getDateRange, getPreviousPeriodRange, getSpecificDayRange } from "@/lib/date-utils";
 import type { DateRange } from "@/lib/date-utils";
-import { OrderStatus, type OrderSource, type Prisma } from "@prisma/client";
+import { OrderStatus, type Currency, type OrderSource, type Prisma } from "@prisma/client";
 import type { TimePeriod } from "@/lib/types";
 import { getHoHWeeksInRange, HOH_POLICY_START } from "@/lib/head-of-house";
 
@@ -285,7 +285,7 @@ export async function createManualOrder(data: {
     const salesRepId = ctx.userId;
 
     let totalAmount = 0;
-    let orderCurrency = "NGN";
+    let orderCurrency: Currency = "NGN";
     const orderItems: Prisma.OrderItemCreateWithoutOrderInput[] = [];
 
     for (const item of data.items) {
