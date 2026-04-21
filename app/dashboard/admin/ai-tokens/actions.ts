@@ -1,7 +1,7 @@
 "use server"
 
 import { requireOrgContext } from "@/lib/org-context"
-import { TOKEN_PACKS, type TokenPackId } from "@/lib/ai-tokens"
+import { TOKEN_PACKS, type TokenPackId } from "@/lib/ai-token-packs"
 
 export async function initializeTokenPurchase(packId: TokenPackId) {
   const ctx = await requireOrgContext()

@@ -3,7 +3,7 @@
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Zap, Loader2 } from "lucide-react"
-import { TOKEN_PACKS, type TokenPackId } from "@/lib/ai-tokens"
+import { TOKEN_PACKS, type TokenPackId } from "@/lib/ai-token-packs"
 import { initializeTokenPurchase } from "../actions"
 
 interface TokenPacksProps {

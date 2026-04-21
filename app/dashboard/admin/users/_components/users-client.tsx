@@ -58,7 +58,6 @@ interface UserWithMember {
   createdAt: Date;
   role: OrgMemberRole;
   isActive: boolean;
-  isAiAgent: boolean;
 }
 import {
     Bot,
