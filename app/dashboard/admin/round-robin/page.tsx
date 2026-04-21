@@ -16,7 +16,7 @@ async function getRoundRobinData(organizationId: string) {
     where: { organizationId, role: "SALES_REP", isAiAgent: false },
     include: {
       user: {
-        select: { id: true, name: true, email: true, image: true, isActive: true },
+        select: { id: true, name: true, email: true, image: true },
       },
     },
     orderBy: { user: { name: "asc" } },
