@@ -47,6 +47,7 @@ import {
 } from "@/lib/export-utils";
 
 type SalesRepWithDetails = User & {
+  isActive: boolean;
   orders: (Order & {
     _count?: {
       items: number;

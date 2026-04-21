@@ -24,7 +24,7 @@ async function getSalesRepDetails(organizationId: string, repId: string, period:
   // Verify the rep belongs to this org
   const member = await db.organizationMember.findFirst({
     where: { organizationId, userId: repId, role: "SALES_REP" },
-    include: { user: { select: { id: true, name: true, email: true, image: true, createdAt: true, isActive: true } } },
+    include: { user: { select: { id: true, name: true, email: true, image: true, createdAt: true } } },
   });
 
   if (!member) notFound();
@@ -44,7 +44,7 @@ async function getSalesRepDetails(organizationId: string, repId: string, period:
     orderBy: { createdAt: "desc" },
   });
 
-  const salesRep = { ...member.user, orders: salesRepOrders };
+  const salesRep = { ...member.user, isActive: member.isActive, orders: salesRepOrders };
 
   // Split orders into current and previous periods
   const currentOrders = salesRep.orders.filter(
