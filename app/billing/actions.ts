@@ -43,7 +43,9 @@ export async function initializePaystackPayment(planId: PlanId) {
           interval: plan.interval,
           userId: ctx.userId,
         },
-        callback_url: `${process.env.NEXT_PUBLIC_APP_URL}/billing/verify?reference=${reference}`,
+        // Do NOT add ?reference= here — Paystack appends reference & trxref itself.
+        // Adding it ourselves causes a duplicate that breaks searchParams on the verify page.
+        callback_url: `${process.env.NEXT_PUBLIC_APP_URL}/billing/verify`,
       }),
     })
 

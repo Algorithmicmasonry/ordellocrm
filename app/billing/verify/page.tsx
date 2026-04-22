@@ -5,12 +5,18 @@ import Link from "next/link"
 import { Button } from "@/components/ui/button"
 
 interface Props {
-  searchParams: Promise<{ reference?: string }>
+  searchParams: Promise<{ reference?: string | string[]; trxref?: string | string[] }>
 }
 
 export default async function BillingVerifyPage({ searchParams }: Props) {
-  const { reference } = await searchParams
+  const params = await searchParams
   await requireOrgContext()
+
+  // Paystack sends both `reference` and `trxref`. If our callback_url already
+  // contained ?reference=X, Paystack appends another reference=X making it an
+  // array. Always take the first scalar value; fall back to trxref.
+  const raw = params.reference ?? params.trxref
+  const reference = Array.isArray(raw) ? raw[0] : raw
 
   if (!reference) redirect("/billing")
 
