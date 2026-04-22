@@ -289,7 +289,7 @@ export default function Home() {
                 </div>
               </div>
               <div style={{ borderRadius: "1rem", overflow: "hidden", border: "1px solid rgba(255,255,255,0.08)", background: "#0a0f1e", boxShadow: "0 24px 64px rgba(0,0,0,0.5)" }}>
-                <video autoPlay muted loop playsInline preload="none" style={{ width: "100%", display: "block" }}>
+                <video autoPlay muted loop playsInline style={{ width: "100%", display: "block" }}>
                   <source src="/enterprise/ordello-profit-clarity.mp4" type="video/mp4" />
                 </video>
               </div>
@@ -298,7 +298,7 @@ export default function Home() {
             {/* Row 2: video left, text right */}
             <div className="grid lg:grid-cols-2 gap-12 items-center">
               <div style={{ borderRadius: "1rem", overflow: "hidden", border: "1px solid rgba(255,255,255,0.08)", background: "#0a0f1e", boxShadow: "0 24px 64px rgba(0,0,0,0.5)" }} className="order-last lg:order-first">
-                <video autoPlay muted loop playsInline preload="none" style={{ width: "100%", display: "block" }}>
+                <video autoPlay muted loop playsInline style={{ width: "100%", display: "block" }}>
                   <source src="/enterprise/ordello-round-robin-assign.mp4" type="video/mp4" />
                 </video>
               </div>
@@ -345,7 +345,7 @@ export default function Home() {
                 </div>
               </div>
               <div style={{ borderRadius: "1rem", overflow: "hidden", border: "1px solid rgba(255,255,255,0.08)", background: "#0a0f1e", boxShadow: "0 24px 64px rgba(0,0,0,0.5)" }}>
-                <video autoPlay muted loop playsInline preload="none" style={{ width: "100%", display: "block" }}>
+                <video autoPlay muted loop playsInline style={{ width: "100%", display: "block" }}>
                   <source src="/enterprise/ordello-agents-page.mp4" type="video/mp4" />
                 </video>
               </div>
