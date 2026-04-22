@@ -122,5 +122,6 @@ export async function requireOrgContext(orgSlug?: string): Promise<OrgContext> {
   if (result.status === "unauthenticated") redirect("/login")
   if (result.status === "no_org") redirect("/onboarding")
   if (result.status === "ok") return result.ctx
-  redirect("/login")
+  // Unreachable — all union variants handled above
+  throw new Error("Unexpected org context state")
 }
