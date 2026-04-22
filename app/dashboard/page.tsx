@@ -4,7 +4,7 @@ import { requireOrgContext } from "@/lib/org-context";
 export default async function DashboardPage() {
   const ctx = await requireOrgContext();
 
-  if (ctx.role === "ADMIN") {
+  if (ctx.role === "OWNER" || ctx.role === "ADMIN") {
     redirect("/dashboard/admin");
   } else if (ctx.role === "SALES_REP") {
     redirect("/dashboard/sales-rep");
@@ -12,5 +12,6 @@ export default async function DashboardPage() {
     redirect("/dashboard/inventory");
   }
 
-  redirect("/login");
+  // Fallback: keep the user in the app even if a new role is added later.
+  redirect("/dashboard/admin");
 }
