@@ -2,9 +2,15 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Check, Loader2 } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
+import { Check, Loader2, ShieldCheck, AlertCircle } from "lucide-react";
 import { initializePaystackPayment, type PlanId } from "../actions";
-import { useRouter } from "next/navigation";
 
 const STARTER_FEATURES = [
   "Order management & tracking",
@@ -34,218 +40,281 @@ const GROWTH_EXTRAS = [
   "Performance alerts & coaching",
 ];
 
+const PLAN_LABELS: Record<string, { name: string; price: (yearly: boolean) => string }> = {
+  core_monthly:  { name: "Starter (Monthly)",  price: () => "₦8,000/month" },
+  core_yearly:   { name: "Starter (Yearly)",   price: () => "₦80,000/year" },
+  growth_monthly:{ name: "Growth (Monthly)",   price: () => "₦15,000/month" },
+  growth_yearly: { name: "Growth (Yearly)",    price: () => "₦150,000/year" },
+};
+
 interface BillingClientProps {
   currentPlan?: string;
 }
 
 export function BillingClient({ currentPlan }: BillingClientProps) {
-  const router = useRouter();
   const [yearly, setYearly] = useState(false);
   const [loading, setLoading] = useState<PlanId | null>(null);
+  const [pendingPlanId, setPendingPlanId] = useState<PlanId | null>(null);
 
-  async function handleSubscribe(planId: PlanId) {
+  // Step 1: button click → open confirmation dialog
+  function handleClick(planId: PlanId) {
+    setPendingPlanId(planId);
+  }
+
+  // Step 2: user confirms in dialog → call Paystack
+  async function handleConfirm() {
+    if (!pendingPlanId) return;
+    const planId = pendingPlanId;
+    setPendingPlanId(null);
     setLoading(planId);
+
     const result = await initializePaystackPayment(planId);
     if (!result.success) {
       alert(result.error);
       setLoading(null);
       return;
     }
-    // Redirect to Paystack checkout
     window.location.href = result.authorizationUrl!;
   }
 
   const corePlanId: PlanId = yearly ? "core_yearly" : "core_monthly";
   const growthPlanId: PlanId = yearly ? "growth_yearly" : "growth_monthly";
+  const pendingLabel = pendingPlanId ? PLAN_LABELS[pendingPlanId] : null;
 
   return (
-    <div className="max-w-4xl mx-auto">
-      {/* Header */}
-      <div className="text-center mb-10">
-        <h1 className="text-4xl font-bold mb-3">Simple, honest pricing</h1>
-        <p className="text-muted-foreground text-lg">
-          Everything you need to run a serious POD business — no hidden fees.
-        </p>
+    <>
+      {/* Paystack name notice dialog */}
+      <Dialog open={!!pendingPlanId} onOpenChange={(open) => { if (!open) setPendingPlanId(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ShieldCheck className="size-5 text-green-600" />
+              Secure Checkout
+            </DialogTitle>
+            <DialogDescription asChild>
+              <div className="space-y-4 pt-1">
+                <p className="text-sm text-foreground">
+                  You&apos;re about to be redirected to Paystack to complete your{" "}
+                  <span className="font-semibold">{pendingLabel?.name}</span> payment of{" "}
+                  <span className="font-semibold">{pendingPlanId ? pendingLabel?.price(yearly) : ""}</span>.
+                </p>
 
-        {/* Monthly / Yearly toggle */}
-        <div className="inline-flex items-center gap-3 mt-6 bg-muted rounded-full px-2 py-1.5">
-          <button
-            onClick={() => setYearly(false)}
-            className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
-              !yearly
-                ? "bg-background shadow text-foreground"
-                : "text-muted-foreground"
-            }`}
-          >
-            Monthly
-          </button>
-          <button
-            onClick={() => setYearly(true)}
-            className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
-              yearly
-                ? "bg-background shadow text-foreground"
-                : "text-muted-foreground"
-            }`}
-          >
-            Yearly
-            <span className="ml-1.5 text-xs text-primary font-semibold">
-              Save 2 months
-            </span>
-          </button>
+                <div className="flex gap-2.5 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 p-3">
+                  <AlertCircle className="size-4 text-amber-600 shrink-0 mt-0.5" />
+                  <p className="text-xs text-amber-800 dark:text-amber-200">
+                    The Paystack checkout page will display{" "}
+                    <span className="font-semibold">OSlint</span> as the merchant name.
+                    This is our registered business name on Paystack — your payment is
+                    going directly to Ordello and is fully secure.
+                  </p>
+                </div>
+
+                <div className="flex gap-3 pt-1">
+                  <Button
+                    variant="outline"
+                    className="flex-1"
+                    onClick={() => setPendingPlanId(null)}
+                  >
+                    Cancel
+                  </Button>
+                  <Button className="flex-1" onClick={handleConfirm}>
+                    Continue to Payment
+                  </Button>
+                </div>
+              </div>
+            </DialogDescription>
+          </DialogHeader>
+        </DialogContent>
+      </Dialog>
+
+      <div className="max-w-4xl mx-auto">
+        {/* Header */}
+        <div className="text-center mb-10">
+          <h1 className="text-4xl font-bold mb-3">Simple, honest pricing</h1>
+          <p className="text-muted-foreground text-lg">
+            Everything you need to run a serious POD business — no hidden fees.
+          </p>
+
+          {/* Monthly / Yearly toggle */}
+          <div className="inline-flex items-center gap-3 mt-6 bg-muted rounded-full px-2 py-1.5">
+            <button
+              onClick={() => setYearly(false)}
+              className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
+                !yearly
+                  ? "bg-background shadow text-foreground"
+                  : "text-muted-foreground"
+              }`}
+            >
+              Monthly
+            </button>
+            <button
+              onClick={() => setYearly(true)}
+              className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
+                yearly
+                  ? "bg-background shadow text-foreground"
+                  : "text-muted-foreground"
+              }`}
+            >
+              Yearly
+              <span className="ml-1.5 text-xs text-primary font-semibold">
+                Save 2 months
+              </span>
+            </button>
+          </div>
         </div>
-      </div>
 
-      {/* Plan cards */}
-      <div className="grid md:grid-cols-2 gap-6 mb-10">
-        {/* Starter */}
-        <div className="border-2 rounded-2xl p-8 space-y-6">
-          <div>
-            <h2 className="text-xl font-bold mb-1">Starter</h2>
-            <p className="text-muted-foreground text-sm">
-              Best for early-stage POD businesses validating demand.
-            </p>
-          </div>
-
-          <div>
-            <div className="flex items-end gap-1">
-              <span className="text-4xl font-bold">
-                {yearly ? "₦80,000" : "₦8,000"}
-              </span>
-              <span className="text-muted-foreground mb-1">
-                /{yearly ? "year" : "month"}
-              </span>
-            </div>
-            {yearly && (
-              <p className="text-xs text-primary font-medium mt-1">
-                = ₦6,667/month — 2 months free
+        {/* Plan cards */}
+        <div className="grid md:grid-cols-2 gap-6 mb-10">
+          {/* Starter */}
+          <div className="border-2 rounded-2xl p-8 space-y-6">
+            <div>
+              <h2 className="text-xl font-bold mb-1">Starter</h2>
+              <p className="text-muted-foreground text-sm">
+                Best for early-stage POD businesses validating demand.
               </p>
-            )}
-          </div>
+            </div>
 
-          <ul className="space-y-2.5">
-            {STARTER_FEATURES.map((f) => (
-              <li key={f} className="flex items-start gap-2.5 text-sm">
-                <Check className="h-4 w-4 text-primary shrink-0 mt-0.5" />
-                {f}
-              </li>
-            ))}
-          </ul>
+            <div>
+              <div className="flex items-end gap-1">
+                <span className="text-4xl font-bold">
+                  {yearly ? "₦80,000" : "₦8,000"}
+                </span>
+                <span className="text-muted-foreground mb-1">
+                  /{yearly ? "year" : "month"}
+                </span>
+              </div>
+              {yearly && (
+                <p className="text-xs text-primary font-medium mt-1">
+                  = ₦6,667/month — 2 months free
+                </p>
+              )}
+            </div>
 
-          <div>
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Limits</p>
-            <ul className="space-y-2">
-              {STARTER_LIMITS.map((l) => (
-                <li key={l} className="flex items-start gap-2.5 text-sm text-muted-foreground">
+            <ul className="space-y-2.5">
+              {STARTER_FEATURES.map((f) => (
+                <li key={f} className="flex items-start gap-2.5 text-sm">
                   <Check className="h-4 w-4 text-primary shrink-0 mt-0.5" />
-                  {l}
+                  {f}
                 </li>
               ))}
             </ul>
+
+            <div>
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Limits</p>
+              <ul className="space-y-2">
+                {STARTER_LIMITS.map((l) => (
+                  <li key={l} className="flex items-start gap-2.5 text-sm text-muted-foreground">
+                    <Check className="h-4 w-4 text-primary shrink-0 mt-0.5" />
+                    {l}
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <Button
+              variant={currentPlan === "CORE" ? "outline" : "default"}
+              className="w-full"
+              disabled={!!loading || currentPlan === "CORE"}
+              onClick={() => handleClick(corePlanId)}
+            >
+              {loading === corePlanId ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" /> Processing...
+                </>
+              ) : currentPlan === "CORE" ? (
+                "Current Plan"
+              ) : (
+                "Get Starter"
+              )}
+            </Button>
           </div>
 
-          <Button
-            variant={currentPlan === "CORE" ? "outline" : "default"}
-            className="w-full"
-            disabled={!!loading || currentPlan === "CORE"}
-            onClick={() => handleSubscribe(corePlanId)}
-          >
-            {loading === corePlanId ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin mr-2" /> Processing...
-              </>
-            ) : currentPlan === "CORE" ? (
-              "Current Plan"
-            ) : (
-              "Get Starter"
-            )}
-          </Button>
-        </div>
-
-        {/* Growth */}
-        <div className="border-2 border-primary rounded-2xl p-8 space-y-6 relative">
-          <div className="absolute -top-3.5 left-1/2 -translate-x-1/2">
-            <span className="bg-primary text-white text-xs font-semibold px-4 py-1.5 rounded-full">
-              Most Popular
-            </span>
-          </div>
-
-          <div>
-            <h2 className="text-xl font-bold mb-1">Growth</h2>
-            <p className="text-muted-foreground text-sm">
-              Scale without it falling apart — automation, hiring, and more.
-            </p>
-          </div>
-
-          <div>
-            <div className="flex items-end gap-1">
-              <span className="text-4xl font-bold">
-                {yearly ? "₦150,000" : "₦15,000"}
-              </span>
-              <span className="text-muted-foreground mb-1">
-                /{yearly ? "year" : "month"}
+          {/* Growth */}
+          <div className="border-2 border-primary rounded-2xl p-8 space-y-6 relative">
+            <div className="absolute -top-3.5 left-1/2 -translate-x-1/2">
+              <span className="bg-primary text-white text-xs font-semibold px-4 py-1.5 rounded-full">
+                Most Popular
               </span>
             </div>
-            {yearly && (
-              <p className="text-xs text-primary font-medium mt-1">
-                = ₦12,500/month — 2 months free
+
+            <div>
+              <h2 className="text-xl font-bold mb-1">Growth</h2>
+              <p className="text-muted-foreground text-sm">
+                Scale without it falling apart — automation, hiring, and more.
               </p>
-            )}
+            </div>
+
+            <div>
+              <div className="flex items-end gap-1">
+                <span className="text-4xl font-bold">
+                  {yearly ? "₦150,000" : "₦15,000"}
+                </span>
+                <span className="text-muted-foreground mb-1">
+                  /{yearly ? "year" : "month"}
+                </span>
+              </div>
+              {yearly && (
+                <p className="text-xs text-primary font-medium mt-1">
+                  = ₦12,500/month — 2 months free
+                </p>
+              )}
+            </div>
+
+            <ul className="space-y-2.5">
+              {GROWTH_EXTRAS.map((f) => (
+                <li key={f} className="flex items-start gap-2.5 text-sm">
+                  <Check className="h-4 w-4 text-primary shrink-0 mt-0.5" />
+                  {f}
+                </li>
+              ))}
+            </ul>
+
+            <Button
+              className="w-full"
+              disabled={!!loading || currentPlan === "GROWTH"}
+              onClick={() => handleClick(growthPlanId)}
+            >
+              {loading === growthPlanId ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" /> Processing...
+                </>
+              ) : currentPlan === "GROWTH" ? (
+                "Current Plan"
+              ) : (
+                "Get Growth"
+              )}
+            </Button>
           </div>
+        </div>
 
-          <ul className="space-y-2.5">
-            {GROWTH_EXTRAS.map((f) => (
-              <li key={f} className="flex items-start gap-2.5 text-sm">
-                <Check className="h-4 w-4 text-primary shrink-0 mt-0.5" />
-                {f}
-              </li>
-            ))}
-          </ul>
-
-          <Button
-            className="w-full"
-            disabled={!!loading || currentPlan === "GROWTH"}
-            onClick={() => handleSubscribe(growthPlanId)}
+        {/* Enterprise */}
+        <div className="border rounded-2xl p-8 text-center space-y-4">
+          <div>
+            <h2 className="text-xl font-bold mb-1">Enterprise</h2>
+            <p className="text-muted-foreground">
+              Done-for-you setup, migration, team training, and dedicated support.
+              We build it, you run it.
+            </p>
+          </div>
+          <a
+            href="mailto:hello@ordello.com"
+            className="inline-block bg-foreground text-background font-semibold px-6 py-2.5 rounded-lg text-sm hover:opacity-90 transition-opacity"
           >
-            {loading === growthPlanId ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin mr-2" /> Processing...
-              </>
-            ) : currentPlan === "GROWTH" ? (
-              "Current Plan"
-            ) : (
-              "Get Growth"
-            )}
-          </Button>
+            Talk to Us
+          </a>
         </div>
-      </div>
 
-      {/* Enterprise */}
-      <div className="border rounded-2xl p-8 text-center space-y-4">
-        <div>
-          <h2 className="text-xl font-bold mb-1">Enterprise</h2>
-          <p className="text-muted-foreground">
-            Done-for-you setup, migration, team training, and dedicated support.
-            We build it, you run it.
-          </p>
-        </div>
-        <a
-          href="mailto:hello@ordello.com"
-          className="inline-block bg-foreground text-background font-semibold px-6 py-2.5 rounded-lg text-sm hover:opacity-90 transition-opacity"
-        >
-          Talk to Us
-        </a>
+        {/* Ad Tracker note */}
+        <p className="text-center text-sm text-muted-foreground mt-8">
+          The Ad Tracker is always free — no plan required.{" "}
+          <a
+            href="/dashboard/admin/utm-tracking"
+            className="text-primary hover:underline"
+          >
+            Go to Ad Tracker →
+          </a>
+        </p>
       </div>
-
-      {/* Ad Tracker note */}
-      <p className="text-center text-sm text-muted-foreground mt-8">
-        The Ad Tracker is always free — no plan required.{" "}
-        <a
-          href="/dashboard/admin/utm-tracking"
-          className="text-primary hover:underline"
-        >
-          Go to Ad Tracker →
-        </a>
-      </p>
-    </div>
+    </>
   );
 }

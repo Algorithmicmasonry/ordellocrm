@@ -2,9 +2,9 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Ordello CRM",
-    short_name: "Ordo",
-    description: "E-commerce CRM and Order Management System",
+    name: "Ordello",
+    short_name: "Ordello",
+    description: "E-commerce CRM and order management for POD businesses.",
     start_url: "/dashboard",
     display: "standalone",
     background_color: "#ffffff",
