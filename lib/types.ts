@@ -158,7 +158,7 @@ export type OrderWithRelations = Order & {
   assignedTo: Pick<User, "id" | "name" | "email"> | null;
   agent: Pick<Agent, "id" | "name" | "location"> | null;
   items: (OrderItem & {
-    product: Pick<Product, "id" | "name" | "price">;
+    product: Pick<Product, "id" | "name">;
   })[];
   notes: OrderNote[];
 };
