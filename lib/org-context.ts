@@ -121,5 +121,6 @@ export async function requireOrgContext(orgSlug?: string): Promise<OrgContext> {
   const result = await getOrgContext(orgSlug)
   if (result.status === "unauthenticated") redirect("/login")
   if (result.status === "no_org") redirect("/onboarding")
+  if (result.status !== "ok") redirect("/login")
   return result.ctx
 }
