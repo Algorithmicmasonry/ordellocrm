@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { Menu, X } from "lucide-react";
+import { OrdelloLogo } from "@/components/ordello-logo";
 
 const NAV_LINKS = [
   { href: "#features", label: "Features" },
@@ -38,14 +39,9 @@ export function LandingNav() {
       <div className="max-w-6xl mx-auto px-5 sm:px-6 h-16 flex items-center justify-between">
         {/* Logo */}
         <Link href="/" className="flex items-center gap-2.5 shrink-0">
-          <div className="size-8 rounded-lg bg-blue-600 flex items-center justify-center">
-            <svg viewBox="0 0 24 24" fill="none" className="size-4 text-white" stroke="currentColor" strokeWidth={2.5}>
-              <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
-              <polyline points="9,22 9,12 15,12 15,22" />
-            </svg>
-          </div>
+          <OrdelloLogo size={32} />
           <span style={{ color: "white", fontWeight: 700, fontSize: "1.2rem", letterSpacing: "-0.02em" }}>
-            ordello
+            Ordello
           </span>
         </Link>
 
