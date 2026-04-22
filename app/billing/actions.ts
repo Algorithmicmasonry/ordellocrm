@@ -5,7 +5,7 @@ import { db } from "@/lib/db"
 
 export type PlanId = "core_monthly" | "core_yearly" | "growth_monthly" | "growth_yearly"
 
-export const PLANS: Record<PlanId, { name: string; amount: number; interval: string; plan: "CORE" | "GROWTH" }> = {
+const PLANS: Record<PlanId, { name: string; amount: number; interval: string; plan: "CORE" | "GROWTH" }> = {
   core_monthly:  { name: "Starter - Monthly",  amount: 800000,   interval: "monthly", plan: "CORE"   },
   core_yearly:   { name: "Starter - Yearly",   amount: 8000000,  interval: "yearly",  plan: "CORE"   },
   growth_monthly:{ name: "Growth - Monthly",amount: 1500000,  interval: "monthly", plan: "GROWTH" },
