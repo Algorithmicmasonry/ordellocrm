@@ -5,9 +5,10 @@ import Link from "next/link";
 import { ChevronRight, ExternalLink } from "lucide-react";
 import { SandboxOrdersTable } from "./_components/sandbox-orders-table";
 import { getSandboxOrders } from "./actions";
+import { ComingSoonOverlay } from "@/components/coming-soon-overlay";
 
 export const metadata = {
-  title: "AI Sandbox - Ordo CRM",
+  title: "AI Sandbox - Ordello CRM",
   description: "Test the AI agent with sandbox orders",
 };
 
@@ -19,7 +20,11 @@ export default async function AiSandboxPage() {
 
   // Fetch active products with packages for the product selector
   const products = await db.product.findMany({
-    where: { organizationId: ctx.organizationId, isActive: true, isDeleted: false },
+    where: {
+      organizationId: ctx.organizationId,
+      isActive: true,
+      isDeleted: false,
+    },
     include: {
       packages: { where: { isActive: true }, select: { id: true } },
     },
@@ -32,6 +37,10 @@ export default async function AiSandboxPage() {
   const sandboxOrders = ordersResult.success ? ordersResult.data : [];
 
   return (
+    <ComingSoonOverlay
+      title="AI Sandbox — Coming Soon"
+      description="The AI agent testing sandbox lets you trigger real Vapi calls with fake orders so you can fine-tune your AI before going live."
+    >
     <div className="flex flex-col gap-6">
       {/* Breadcrumbs */}
       <div className="flex items-center gap-2 text-sm">
@@ -51,7 +60,8 @@ export default async function AiSandboxPage() {
           AI Agent Sandbox
         </h1>
         <p className="text-muted-foreground text-lg mt-1">
-          Test the AI agent with sandbox orders that don&apos;t affect real inventory or revenue.
+          Test the AI agent with sandbox orders that don&apos;t affect real
+          inventory or revenue.
         </p>
       </div>
 
@@ -61,7 +71,13 @@ export default async function AiSandboxPage() {
           ⚠ Sandbox Mode
         </p>
         <p className="text-sm text-yellow-800 dark:text-yellow-200">
-          Orders submitted via the sandbox form are assigned directly to the AI agent and will trigger a real Vapi call (if <code className="font-mono bg-yellow-100 dark:bg-yellow-900 px-1 rounded">VAPI_ENABLED=true</code>). No stock is deducted and sandbox orders are hidden from all dashboards and reports.
+          Orders submitted via the sandbox form are assigned directly to the AI
+          agent and will trigger a real Vapi call (if{" "}
+          <code className="font-mono bg-yellow-100 dark:bg-yellow-900 px-1 rounded">
+            VAPI_ENABLED=true
+          </code>
+          ). No stock is deducted and sandbox orders are hidden from all
+          dashboards and reports.
         </p>
       </div>
 
@@ -69,13 +85,18 @@ export default async function AiSandboxPage() {
       <div className="rounded-lg border border-border p-6 space-y-4">
         <h2 className="text-lg font-semibold">Open Test Form</h2>
         <p className="text-sm text-muted-foreground">
-          Select a product below and open its sandbox order form in a new tab. The form behaves exactly like the live customer form but marks the order as a sandbox test.
+          Select a product below and open its sandbox order form in a new tab.
+          The form behaves exactly like the live customer form but marks the
+          order as a sandbox test.
         </p>
 
         {productsWithPackages.length === 0 ? (
           <p className="text-sm text-muted-foreground italic">
             No active products with packages found. Add packages in{" "}
-            <Link href="/dashboard/admin/inventory" className="underline text-primary">
+            <Link
+              href="/dashboard/admin/inventory"
+              className="underline text-primary"
+            >
               Inventory
             </Link>{" "}
             first.
@@ -93,7 +114,8 @@ export default async function AiSandboxPage() {
                 <ExternalLink className="size-4 text-muted-foreground" />
                 {product.name}
                 <span className="text-xs text-muted-foreground">
-                  ({product.packages.length} pkg{product.packages.length !== 1 ? "s" : ""})
+                  ({product.packages.length} pkg
+                  {product.packages.length !== 1 ? "s" : ""})
                 </span>
               </Link>
             ))}
@@ -107,5 +129,6 @@ export default async function AiSandboxPage() {
         <SandboxOrdersTable orders={sandboxOrders} />
       </div>
     </div>
+    </ComingSoonOverlay>
   );
 }

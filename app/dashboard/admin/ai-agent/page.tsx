@@ -4,9 +4,10 @@ import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 import { getAiDashboardData, getHumanSalesReps } from "./actions";
 import { AiDashboardClient } from "./_components";
+import { ComingSoonOverlay } from "@/components/coming-soon-overlay";
 
 export const metadata = {
-  title: "AI Agent Dashboard - Ordo CRM",
+  title: "AI Agent Dashboard - Ordello CRM",
   description: "Monitor AI agent call activity, transcripts, and pipeline",
 };
 
@@ -39,6 +40,10 @@ export default async function AiAgentDashboardPage() {
   const vapiEnabled = process.env.VAPI_ENABLED === "true";
 
   return (
+    <ComingSoonOverlay
+      title="AI Agent — Coming Soon"
+      description="Our AI voice agent will automatically call and confirm customer orders, assign deliveries, and follow up — all hands-free. This feature is in final development."
+    >
     <div className="flex flex-col gap-6">
       {/* Breadcrumbs */}
       <div className="flex items-center gap-2 text-sm">
@@ -95,9 +100,12 @@ export default async function AiAgentDashboardPage() {
             AI Agent is disabled
           </p>
           <p className="text-sm text-yellow-800 dark:text-yellow-200">
-            Set <code className="font-mono bg-yellow-100 dark:bg-yellow-900 px-1 rounded">VAPI_ENABLED=true</code> in
-            your environment variables to enable outbound AI calls. Orders will still be assigned to the AI user but no
-            calls will be placed.
+            Set{" "}
+            <code className="font-mono bg-yellow-100 dark:bg-yellow-900 px-1 rounded">
+              VAPI_ENABLED=true
+            </code>{" "}
+            in your environment variables to enable outbound AI calls. Orders
+            will still be assigned to the AI user but no calls will be placed.
           </p>
         </div>
       )}
@@ -110,5 +118,6 @@ export default async function AiAgentDashboardPage() {
         salesReps={salesReps}
       />
     </div>
+    </ComingSoonOverlay>
   );
 }
