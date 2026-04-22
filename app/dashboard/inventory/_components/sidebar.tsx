@@ -106,7 +106,7 @@ export function Sidebar() {
 
         {!isCollapsed && (
           <div className="flex-1 min-w-0">
-            <h1 className="text-base font-bold leading-none">ordello</h1>
+            <h1 className="text-base font-bold leading-none">Ordello</h1>
             <p className="text-xs text-muted-foreground mt-1">
               Inventory Manager
             </p>
