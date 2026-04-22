@@ -12,7 +12,7 @@ export const metadata = {
 
 export default async function StockCorrectionPage() {
   const ctx = await requireOrgContext();
-  if (ctx.role !== "ADMIN") {
+  if (ctx.role !== "ADMIN" && ctx.role !== "OWNER") {
     redirect("/dashboard");
   }
 

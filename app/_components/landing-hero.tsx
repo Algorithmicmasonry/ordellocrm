@@ -185,8 +185,8 @@ export function LandingHero() {
               }}
             >
               Every naira tracked.{" "}
-              <span style={{ color: "#60a5fa" }}>Every order </span>
-              delivered.
+              <span style={{ color: "#60a5fa" }}>Every Process </span>
+              Automated.
             </h1>
 
             {/* Sub-copy */}

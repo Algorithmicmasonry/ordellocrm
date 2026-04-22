@@ -25,7 +25,7 @@ export async function generateMetadata({ params }: PageProps) {
 
 export default async function ProductPackagesPage({ params }: PageProps) {
   const ctx = await requireOrgContext();
-  if (ctx.role !== "INVENTORY_MANAGER" && ctx.role !== "ADMIN") {
+  if (ctx.role !== "INVENTORY_MANAGER" && ctx.role !== "ADMIN" && ctx.role !== "OWNER") {
     redirect("/dashboard");
   }
 

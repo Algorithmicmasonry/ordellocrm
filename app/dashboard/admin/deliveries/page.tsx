@@ -35,7 +35,7 @@ export default async function DeliveriesPage({
   searchParams: SearchParams;
 }) {
   const ctx = await requireOrgContext();
-  if (ctx.role !== "ADMIN") {
+  if (ctx.role !== "ADMIN" && ctx.role !== "OWNER") {
     redirect("/dashboard");
   }
 

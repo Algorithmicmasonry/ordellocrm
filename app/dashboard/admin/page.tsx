@@ -31,7 +31,7 @@ export default async function AdminDashboardPage({
   searchParams,
 }: AdminDashboardPageProps) {
   const ctx = await requireOrgContext();
-  if (ctx.role !== "ADMIN") {
+  if (ctx.role !== "ADMIN" && ctx.role !== "OWNER") {
     redirect("/dashboard");
   }
 

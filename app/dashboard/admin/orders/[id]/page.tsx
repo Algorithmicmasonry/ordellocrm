@@ -45,7 +45,7 @@ export async function generateMetadata({ params }: PageProps) {
 
 export default async function AdminOrderDetailsPage({ params }: PageProps) {
   const ctx = await requireOrgContext();
-  if (ctx.role !== "ADMIN") {
+  if (ctx.role !== "ADMIN" && ctx.role !== "OWNER") {
     redirect("/dashboard");
   }
 

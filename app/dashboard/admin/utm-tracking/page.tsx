@@ -6,7 +6,7 @@ import { UTMDashboardClient } from "./_components/utm-dashboard-client";
 
 export default async function UTMTrackingPage() {
   const ctx = await requireOrgContext();
-  if (ctx.role !== "ADMIN") {
+  if (ctx.role !== "ADMIN" && ctx.role !== "OWNER") {
     redirect("/dashboard");
   }
 

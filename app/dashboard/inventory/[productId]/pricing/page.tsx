@@ -14,7 +14,7 @@ export default async function ProductPricingPage({
   params,
 }: ProductPricingPageProps) {
   const ctx = await requireOrgContext();
-  if (ctx.role !== "INVENTORY_MANAGER" && ctx.role !== "ADMIN") {
+  if (ctx.role !== "INVENTORY_MANAGER" && ctx.role !== "ADMIN" && ctx.role !== "OWNER") {
     redirect("/dashboard");
   }
 
