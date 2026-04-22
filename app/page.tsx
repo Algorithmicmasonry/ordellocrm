@@ -251,6 +251,137 @@ export default function Home() {
         </div>
       </section>
 
+      {/* ── Feature showcase (videos) ─────────────────────────── */}
+      <section style={{ padding: "6rem 0", borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+        <div style={{ maxWidth: "72rem", margin: "0 auto", padding: "0 1.25rem" }}>
+          <div style={{ textAlign: "center", marginBottom: "4rem" }}>
+            <SectionLabel>System walkthrough</SectionLabel>
+            <SectionHeading>
+              The moments that make operators{" "}
+              <span style={{ color: "#60a5fa" }}>switch immediately</span>
+            </SectionHeading>
+            <SectionSub>
+              See the real dashboards — not mockups. Every video is from a live Ordello account.
+            </SectionSub>
+          </div>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: "5rem" }}>
+
+            {/* Row 1: text left, video right */}
+            <div className="grid lg:grid-cols-2 gap-12 items-center">
+              <div>
+                <div style={{ display: "inline-block", fontSize: "0.7rem", fontWeight: 700, color: "#60a5fa", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "1rem", padding: "0.2rem 0.75rem", background: "rgba(59,130,246,0.1)", borderRadius: "9999px", border: "1px solid rgba(59,130,246,0.2)" }}>
+                  Profit Clarity
+                </div>
+                <h3 style={{ fontSize: "clamp(1.4rem, 2.5vw, 1.9rem)", fontWeight: 800, color: "white", lineHeight: 1.2, marginBottom: "1rem" }}>
+                  Finally see if you're actually making money
+                </h3>
+                <p style={{ fontSize: "0.95rem", color: "rgba(255,255,255,0.5)", lineHeight: 1.75, marginBottom: "1.5rem" }}>
+                  Not revenue. Real profit after ad spend, clearing fees, failed deliveries, commissions, and hidden leakage. The number most operators think they know — until they see it properly.
+                </p>
+                <div style={{ display: "flex", flexDirection: "column", gap: "0.625rem" }}>
+                  {["See ROAS, ROI, margin, and product-level profit clearly", "Know what to kill, what to fix, and what to scale", "Stop confusing top-line sales with actual business health"].map((b) => (
+                    <div key={b} style={{ display: "flex", gap: "0.625rem", alignItems: "flex-start" }}>
+                      <CheckCircle2 style={{ width: "0.9rem", height: "0.9rem", color: "#4ade80", flexShrink: 0, marginTop: "0.2rem" }} />
+                      <span style={{ fontSize: "0.875rem", color: "rgba(255,255,255,0.55)" }}>{b}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div style={{ borderRadius: "1rem", overflow: "hidden", border: "1px solid rgba(255,255,255,0.08)", background: "#0a0f1e", boxShadow: "0 24px 64px rgba(0,0,0,0.5)" }}>
+                <video autoPlay muted loop playsInline preload="none" style={{ width: "100%", display: "block" }}>
+                  <source src="/enterprise/ordello-profit-clarity.mp4" type="video/mp4" />
+                </video>
+              </div>
+            </div>
+
+            {/* Row 2: video left, text right */}
+            <div className="grid lg:grid-cols-2 gap-12 items-center">
+              <div style={{ borderRadius: "1rem", overflow: "hidden", border: "1px solid rgba(255,255,255,0.08)", background: "#0a0f1e", boxShadow: "0 24px 64px rgba(0,0,0,0.5)" }} className="order-last lg:order-first">
+                <video autoPlay muted loop playsInline preload="none" style={{ width: "100%", display: "block" }}>
+                  <source src="/enterprise/ordello-round-robin-assign.mp4" type="video/mp4" />
+                </video>
+              </div>
+              <div>
+                <div style={{ display: "inline-block", fontSize: "0.7rem", fontWeight: 700, color: "#4ade80", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "1rem", padding: "0.2rem 0.75rem", background: "rgba(34,197,94,0.1)", borderRadius: "9999px", border: "1px solid rgba(34,197,94,0.2)" }}>
+                  Order Control
+                </div>
+                <h3 style={{ fontSize: "clamp(1.4rem, 2.5vw, 1.9rem)", fontWeight: 800, color: "white", lineHeight: 1.2, marginBottom: "1rem" }}>
+                  Orders stop falling through the cracks
+                </h3>
+                <p style={{ fontSize: "0.95rem", color: "rgba(255,255,255,0.5)", lineHeight: 1.75, marginBottom: "1.5rem" }}>
+                  Instead of manually sharing orders to reps on WhatsApp, the system catches every incoming order and automatically assigns it to the next available rep — even while you sleep.
+                </p>
+                <div style={{ display: "flex", flexDirection: "column", gap: "0.625rem" }}>
+                  {["Orders equally distributed to sales reps automatically", "Scheduled follow-up reminders before leads go cold", "Rep gets notified instantly and knows exactly what to do"].map((b) => (
+                    <div key={b} style={{ display: "flex", gap: "0.625rem", alignItems: "flex-start" }}>
+                      <CheckCircle2 style={{ width: "0.9rem", height: "0.9rem", color: "#4ade80", flexShrink: 0, marginTop: "0.2rem" }} />
+                      <span style={{ fontSize: "0.875rem", color: "rgba(255,255,255,0.55)" }}>{b}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Row 3: text left, video right */}
+            <div className="grid lg:grid-cols-2 gap-12 items-center">
+              <div>
+                <div style={{ display: "inline-block", fontSize: "0.7rem", fontWeight: 700, color: "#f472b6", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "1rem", padding: "0.2rem 0.75rem", background: "rgba(236,72,153,0.1)", borderRadius: "9999px", border: "1px solid rgba(236,72,153,0.2)" }}>
+                  Delivery Control
+                </div>
+                <h3 style={{ fontSize: "clamp(1.4rem, 2.5vw, 1.9rem)", fontWeight: 800, color: "white", lineHeight: 1.2, marginBottom: "1rem" }}>
+                  Know exactly where every agent stands
+                </h3>
+                <p style={{ fontSize: "0.95rem", color: "rgba(255,255,255,0.5)", lineHeight: 1.75, marginBottom: "1.5rem" }}>
+                  Assign stock to agents, track what they've delivered, reconcile defectives and missing items, and see each agent's performance — all from one screen.
+                </p>
+                <div style={{ display: "flex", flexDirection: "column", gap: "0.625rem" }}>
+                  {["Real-time agent stock and delivery tracking", "Defective and missing item reconciliation", "Per-agent performance and accountability view"].map((b) => (
+                    <div key={b} style={{ display: "flex", gap: "0.625rem", alignItems: "flex-start" }}>
+                      <CheckCircle2 style={{ width: "0.9rem", height: "0.9rem", color: "#4ade80", flexShrink: 0, marginTop: "0.2rem" }} />
+                      <span style={{ fontSize: "0.875rem", color: "rgba(255,255,255,0.55)" }}>{b}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div style={{ borderRadius: "1rem", overflow: "hidden", border: "1px solid rgba(255,255,255,0.08)", background: "#0a0f1e", boxShadow: "0 24px 64px rgba(0,0,0,0.5)" }}>
+                <video autoPlay muted loop playsInline preload="none" style={{ width: "100%", display: "block" }}>
+                  <source src="/enterprise/ordello-agents-page.mp4" type="video/mp4" />
+                </video>
+              </div>
+            </div>
+
+            {/* Row 4: image (command center) */}
+            <div className="grid lg:grid-cols-2 gap-12 items-center">
+              <div style={{ borderRadius: "1rem", overflow: "hidden", border: "1px solid rgba(255,255,255,0.08)", boxShadow: "0 24px 64px rgba(0,0,0,0.5)" }} className="order-last lg:order-first">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/enterprise/ordello-command-center.png" alt="Ordello command center dashboard" style={{ width: "100%", display: "block" }} />
+              </div>
+              <div>
+                <div style={{ display: "inline-block", fontSize: "0.7rem", fontWeight: 700, color: "#fb923c", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "1rem", padding: "0.2rem 0.75rem", background: "rgba(249,115,22,0.1)", borderRadius: "9999px", border: "1px solid rgba(249,115,22,0.2)" }}>
+                  Full Visibility
+                </div>
+                <h3 style={{ fontSize: "clamp(1.4rem, 2.5vw, 1.9rem)", fontWeight: 800, color: "white", lineHeight: 1.2, marginBottom: "1rem" }}>
+                  One dashboard to run the whole operation
+                </h3>
+                <p style={{ fontSize: "0.95rem", color: "rgba(255,255,255,0.5)", lineHeight: 1.75, marginBottom: "1.5rem" }}>
+                  Revenue, orders, agents, reps, expenses, and profit — all in a single command center. No more switching between WhatsApp, Excel, and spreadsheets to get a picture of your business.
+                </p>
+                <div style={{ display: "flex", flexDirection: "column", gap: "0.625rem" }}>
+                  {["Live order counts and revenue by period", "Top products, top reps, fulfilment rate at a glance", "Compare this week vs last week automatically"].map((b) => (
+                    <div key={b} style={{ display: "flex", gap: "0.625rem", alignItems: "flex-start" }}>
+                      <CheckCircle2 style={{ width: "0.9rem", height: "0.9rem", color: "#4ade80", flexShrink: 0, marginTop: "0.2rem" }} />
+                      <span style={{ fontSize: "0.875rem", color: "rgba(255,255,255,0.55)" }}>{b}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </section>
+
       {/* ── How it works ──────────────────────────────────────── */}
       <section id="how-it-works" style={{ padding: "6rem 0", borderTop: "1px solid rgba(255,255,255,0.06)" }}>
         <div style={{ maxWidth: "72rem", margin: "0 auto", padding: "0 1.25rem" }}>
