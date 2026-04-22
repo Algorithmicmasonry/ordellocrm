@@ -1,12 +1,12 @@
-"use client"
+"use client";
 
-import { useState } from "react"
-import { Button } from "@/components/ui/button"
-import { Check, Loader2 } from "lucide-react"
-import { initializePaystackPayment, type PlanId } from "../actions"
-import { useRouter } from "next/navigation"
+import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Check, Loader2 } from "lucide-react";
+import { initializePaystackPayment, type PlanId } from "../actions";
+import { useRouter } from "next/navigation";
 
-const CORE_FEATURES = [
+const STARTER_FEATURES = [
   "Order management & tracking",
   "Inventory control",
   "Sales rep performance dashboard",
@@ -15,45 +15,51 @@ const CORE_FEATURES = [
   "Round-robin auto-assignment",
   "Mobile push notifications",
   "UTM Ad tracking (always free)",
-]
+];
+
+const STARTER_LIMITS = [
+  "Up to 3 sales reps",
+  "Up to 3 products",
+  "Up to 300 orders/month",
+  "1 admin",
+];
 
 const GROWTH_EXTRAS = [
-  "Everything in Core",
+  "Everything in Starter",
   "Rep hiring & training tools",
   "Automated follow-up engine",
   "Custom commission builder",
   "Ad creative arsenal & swipe file",
   "Capital tracking dashboard",
   "Performance alerts & coaching",
-]
+];
 
 interface BillingClientProps {
-  currentPlan?: string
+  currentPlan?: string;
 }
 
 export function BillingClient({ currentPlan }: BillingClientProps) {
-  const router = useRouter()
-  const [yearly, setYearly] = useState(false)
-  const [loading, setLoading] = useState<PlanId | null>(null)
+  const router = useRouter();
+  const [yearly, setYearly] = useState(false);
+  const [loading, setLoading] = useState<PlanId | null>(null);
 
   async function handleSubscribe(planId: PlanId) {
-    setLoading(planId)
-    const result = await initializePaystackPayment(planId)
+    setLoading(planId);
+    const result = await initializePaystackPayment(planId);
     if (!result.success) {
-      alert(result.error)
-      setLoading(null)
-      return
+      alert(result.error);
+      setLoading(null);
+      return;
     }
     // Redirect to Paystack checkout
-    window.location.href = result.authorizationUrl!
+    window.location.href = result.authorizationUrl!;
   }
 
-  const corePlanId: PlanId = yearly ? "core_yearly" : "core_monthly"
-  const growthPlanId: PlanId = yearly ? "growth_yearly" : "growth_monthly"
+  const corePlanId: PlanId = yearly ? "core_yearly" : "core_monthly";
+  const growthPlanId: PlanId = yearly ? "growth_yearly" : "growth_monthly";
 
   return (
     <div className="max-w-4xl mx-auto">
-
       {/* Header */}
       <div className="text-center mb-10">
         <h1 className="text-4xl font-bold mb-3">Simple, honest pricing</h1>
@@ -66,7 +72,9 @@ export function BillingClient({ currentPlan }: BillingClientProps) {
           <button
             onClick={() => setYearly(false)}
             className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
-              !yearly ? "bg-background shadow text-foreground" : "text-muted-foreground"
+              !yearly
+                ? "bg-background shadow text-foreground"
+                : "text-muted-foreground"
             }`}
           >
             Monthly
@@ -74,23 +82,28 @@ export function BillingClient({ currentPlan }: BillingClientProps) {
           <button
             onClick={() => setYearly(true)}
             className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
-              yearly ? "bg-background shadow text-foreground" : "text-muted-foreground"
+              yearly
+                ? "bg-background shadow text-foreground"
+                : "text-muted-foreground"
             }`}
           >
             Yearly
-            <span className="ml-1.5 text-xs text-primary font-semibold">Save 2 months</span>
+            <span className="ml-1.5 text-xs text-primary font-semibold">
+              Save 2 months
+            </span>
           </button>
         </div>
       </div>
 
       {/* Plan cards */}
       <div className="grid md:grid-cols-2 gap-6 mb-10">
-
-        {/* Core */}
+        {/* Starter */}
         <div className="border-2 rounded-2xl p-8 space-y-6">
           <div>
-            <h2 className="text-xl font-bold mb-1">Core</h2>
-            <p className="text-muted-foreground text-sm">Everything a Nigerian POD business needs from day one.</p>
+            <h2 className="text-xl font-bold mb-1">Starter</h2>
+            <p className="text-muted-foreground text-sm">
+              Best for early-stage POD businesses validating demand.
+            </p>
           </div>
 
           <div>
@@ -98,21 +111,37 @@ export function BillingClient({ currentPlan }: BillingClientProps) {
               <span className="text-4xl font-bold">
                 {yearly ? "₦80,000" : "₦8,000"}
               </span>
-              <span className="text-muted-foreground mb-1">/{yearly ? "year" : "month"}</span>
+              <span className="text-muted-foreground mb-1">
+                /{yearly ? "year" : "month"}
+              </span>
             </div>
             {yearly && (
-              <p className="text-xs text-primary font-medium mt-1">= ₦6,667/month — 2 months free</p>
+              <p className="text-xs text-primary font-medium mt-1">
+                = ₦6,667/month — 2 months free
+              </p>
             )}
           </div>
 
           <ul className="space-y-2.5">
-            {CORE_FEATURES.map((f) => (
+            {STARTER_FEATURES.map((f) => (
               <li key={f} className="flex items-start gap-2.5 text-sm">
                 <Check className="h-4 w-4 text-primary shrink-0 mt-0.5" />
                 {f}
               </li>
             ))}
           </ul>
+
+          <div>
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Limits</p>
+            <ul className="space-y-2">
+              {STARTER_LIMITS.map((l) => (
+                <li key={l} className="flex items-start gap-2.5 text-sm text-muted-foreground">
+                  <Check className="h-4 w-4 text-primary shrink-0 mt-0.5" />
+                  {l}
+                </li>
+              ))}
+            </ul>
+          </div>
 
           <Button
             variant={currentPlan === "CORE" ? "outline" : "default"}
@@ -121,11 +150,13 @@ export function BillingClient({ currentPlan }: BillingClientProps) {
             onClick={() => handleSubscribe(corePlanId)}
           >
             {loading === corePlanId ? (
-              <><Loader2 className="h-4 w-4 animate-spin mr-2" /> Processing...</>
+              <>
+                <Loader2 className="h-4 w-4 animate-spin mr-2" /> Processing...
+              </>
             ) : currentPlan === "CORE" ? (
               "Current Plan"
             ) : (
-              "Get Core"
+              "Get Starter"
             )}
           </Button>
         </div>
@@ -140,7 +171,9 @@ export function BillingClient({ currentPlan }: BillingClientProps) {
 
           <div>
             <h2 className="text-xl font-bold mb-1">Growth</h2>
-            <p className="text-muted-foreground text-sm">Scale without it falling apart — automation, hiring, and more.</p>
+            <p className="text-muted-foreground text-sm">
+              Scale without it falling apart — automation, hiring, and more.
+            </p>
           </div>
 
           <div>
@@ -148,10 +181,14 @@ export function BillingClient({ currentPlan }: BillingClientProps) {
               <span className="text-4xl font-bold">
                 {yearly ? "₦150,000" : "₦15,000"}
               </span>
-              <span className="text-muted-foreground mb-1">/{yearly ? "year" : "month"}</span>
+              <span className="text-muted-foreground mb-1">
+                /{yearly ? "year" : "month"}
+              </span>
             </div>
             {yearly && (
-              <p className="text-xs text-primary font-medium mt-1">= ₦12,500/month — 2 months free</p>
+              <p className="text-xs text-primary font-medium mt-1">
+                = ₦12,500/month — 2 months free
+              </p>
             )}
           </div>
 
@@ -170,7 +207,9 @@ export function BillingClient({ currentPlan }: BillingClientProps) {
             onClick={() => handleSubscribe(growthPlanId)}
           >
             {loading === growthPlanId ? (
-              <><Loader2 className="h-4 w-4 animate-spin mr-2" /> Processing...</>
+              <>
+                <Loader2 className="h-4 w-4 animate-spin mr-2" /> Processing...
+              </>
             ) : currentPlan === "GROWTH" ? (
               "Current Plan"
             ) : (
@@ -185,7 +224,8 @@ export function BillingClient({ currentPlan }: BillingClientProps) {
         <div>
           <h2 className="text-xl font-bold mb-1">Enterprise</h2>
           <p className="text-muted-foreground">
-            Done-for-you setup, migration, team training, and dedicated support. We build it, you run it.
+            Done-for-you setup, migration, team training, and dedicated support.
+            We build it, you run it.
           </p>
         </div>
         <a
@@ -199,10 +239,13 @@ export function BillingClient({ currentPlan }: BillingClientProps) {
       {/* Ad Tracker note */}
       <p className="text-center text-sm text-muted-foreground mt-8">
         The Ad Tracker is always free — no plan required.{" "}
-        <a href="/dashboard/admin/utm" className="text-primary hover:underline">
+        <a
+          href="/dashboard/admin/utm-tracking"
+          className="text-primary hover:underline"
+        >
           Go to Ad Tracker →
         </a>
       </p>
     </div>
-  )
+  );
 }

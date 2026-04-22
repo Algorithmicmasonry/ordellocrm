@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import {
   ArrowRight,
@@ -286,6 +287,7 @@ function PushNotificationPhoneGraphic() {
 /* ─── page ──────────────────────────────────────────────────── */
 
 export default function Home() {
+  const [yearly, setYearly] = useState(false);
   return (
     <div
       style={{ backgroundColor: "#060a14", minHeight: "100vh", color: "white" }}
@@ -1837,9 +1839,51 @@ export default function Home() {
               Start free. Scale as you grow. Every plan includes full access
               during the trial — no credit card required.
             </SectionSub>
+
+            {/* Monthly / Yearly toggle */}
+            <div style={{ display: "inline-flex", alignItems: "center", gap: "0.25rem", marginTop: "1.75rem", background: "rgba(255,255,255,0.06)", borderRadius: "9999px", padding: "0.25rem" }}>
+              <button
+                onClick={() => setYearly(false)}
+                style={{
+                  padding: "0.4rem 1.1rem",
+                  borderRadius: "9999px",
+                  fontSize: "0.85rem",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  border: "none",
+                  background: !yearly ? "white" : "transparent",
+                  color: !yearly ? "#060a14" : "rgba(255,255,255,0.5)",
+                  transition: "all 150ms ease-out",
+                }}
+              >
+                Monthly
+              </button>
+              <button
+                onClick={() => setYearly(true)}
+                style={{
+                  padding: "0.4rem 1.1rem",
+                  borderRadius: "9999px",
+                  fontSize: "0.85rem",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  border: "none",
+                  background: yearly ? "white" : "transparent",
+                  color: yearly ? "#060a14" : "rgba(255,255,255,0.5)",
+                  transition: "all 150ms ease-out",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "0.4rem",
+                }}
+              >
+                Yearly
+                <span style={{ fontSize: "0.7rem", fontWeight: 700, color: "#4ade80", background: "rgba(34,197,94,0.12)", padding: "0.1rem 0.4rem", borderRadius: "9999px" }}>
+                  Save 2 months
+                </span>
+              </button>
+            </div>
           </div>
 
-                    <div className="grid md:grid-cols-3 gap-6 items-start">
+          <div className="grid md:grid-cols-3 gap-6 items-start">
             {/* Starter */}
             <div
               style={{
@@ -1852,12 +1896,21 @@ export default function Home() {
               <div style={{ fontSize: "0.8rem", color: "rgba(255,255,255,0.4)", marginBottom: "0.5rem" }}>
                 STARTER
               </div>
-              <div style={{ display: "flex", alignItems: "baseline", gap: "0.25rem", marginBottom: "0.25rem" }}>
-                <span style={{ fontSize: "2.25rem", fontWeight: 800, color: "white" }}>&#8358;8,000</span>
-                <span style={{ fontSize: "0.875rem", color: "rgba(255,255,255,0.4)" }}>/month</span>
+              <div style={{ display: "flex", alignItems: "baseline", gap: "0.25rem", marginBottom: "0.15rem" }}>
+                <span style={{ fontSize: "2.25rem", fontWeight: 800, color: "white" }}>
+                  {yearly ? "₦80,000" : "₦8,000"}
+                </span>
+                <span style={{ fontSize: "0.875rem", color: "rgba(255,255,255,0.4)" }}>
+                  /{yearly ? "year" : "month"}
+                </span>
               </div>
+              {yearly && (
+                <div style={{ fontSize: "0.75rem", color: "#4ade80", marginBottom: "0.5rem", fontWeight: 500 }}>
+                  = ₦6,667/month — 2 months free
+                </div>
+              )}
               <div style={{ fontSize: "0.8rem", color: "rgba(255,255,255,0.55)", marginBottom: "1rem" }}>
-                For small teams getting out of chaos
+                Best for early-stage POD businesses validating demand
               </div>
 
               <div style={{ fontSize: "0.72rem", color: "#93c5fd", marginBottom: "0.6rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em" }}>
@@ -1865,11 +1918,14 @@ export default function Home() {
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: "0.55rem", marginBottom: "1rem" }}>
                 {[
-                  "Order management (all channels in one place)",
-                  "Sales rep tracking & assignment",
-                  "Basic delivery tracking",
-                  "Profit & revenue dashboard",
-                  "Inventory tracking",
+                  "Order management & tracking",
+                  "Inventory control",
+                  "Sales rep performance dashboard",
+                  "Agent distribution & tracking",
+                  "Financial reports & P&L",
+                  "Round-robin auto-assignment",
+                  "Mobile push notifications",
+                  "UTM Ad tracking (always free)",
                 ].map((f) => (
                   <div key={f} style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
                     <CheckCircle2 style={{ width: "0.85rem", height: "0.85rem", color: "#4ade80", flexShrink: 0 }} />
@@ -1895,11 +1951,8 @@ export default function Home() {
                 ))}
               </div>
 
-              <p style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.42)", marginBottom: "1.25rem" }}>
-                Best for early-stage POD businesses validating demand
-              </p>
               <Link
-                href="/register"
+                href="/login"
                 style={{
                   display: "flex",
                   alignItems: "center",
@@ -1949,24 +2002,32 @@ export default function Home() {
                 Most popular
               </div>
               <div style={{ fontSize: "0.8rem", color: "rgba(255,255,255,0.4)", marginBottom: "0.5rem" }}>GROWTH</div>
-              <div style={{ display: "flex", alignItems: "baseline", gap: "0.25rem", marginBottom: "0.25rem" }}>
-                <span style={{ fontSize: "2.25rem", fontWeight: 800, color: "white" }}>&#8358;15,000</span>
-                <span style={{ fontSize: "0.875rem", color: "rgba(255,255,255,0.4)" }}>/month</span>
+              <div style={{ display: "flex", alignItems: "baseline", gap: "0.25rem", marginBottom: "0.15rem" }}>
+                <span style={{ fontSize: "2.25rem", fontWeight: 800, color: "white" }}>
+                  {yearly ? "₦150,000" : "₦15,000"}
+                </span>
+                <span style={{ fontSize: "0.875rem", color: "rgba(255,255,255,0.4)" }}>
+                  /{yearly ? "year" : "month"}
+                </span>
               </div>
+              {yearly && (
+                <div style={{ fontSize: "0.75rem", color: "#4ade80", marginBottom: "0.5rem", fontWeight: 500 }}>
+                  = ₦12,500/month — 2 months free
+                </div>
+              )}
               <div style={{ fontSize: "0.8rem", color: "rgba(255,255,255,0.55)", marginBottom: "1rem" }}>
-                For businesses scaling orders and teams
+                Best for businesses doing consistent daily orders
               </div>
 
               <div style={{ display: "flex", flexDirection: "column", gap: "0.55rem", marginBottom: "1.25rem" }}>
                 {[
                   "Everything in Starter",
-                  "Unlimited reps, products & orders",
-                  "Advanced profit tracking (per product, per campaign)",
-                  "Rep performance analytics & leaderboard",
-                  "Automated follow-ups & alerts",
-                  "Delivery performance & fraud detection",
-                  "Multi-admin access",
-                  "Exportable reports (P&L, payroll, tax-ready)",
+                  "Rep hiring & training tools",
+                  "Automated follow-up engine",
+                  "Custom commission builder",
+                  "Ad creative arsenal & swipe file",
+                  "Capital tracking dashboard",
+                  "Performance alerts & coaching",
                 ].map((f) => (
                   <div key={f} style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
                     <CheckCircle2 style={{ width: "0.85rem", height: "0.85rem", color: "#4ade80", flexShrink: 0 }} />
@@ -1976,7 +2037,7 @@ export default function Home() {
               </div>
 
               <p style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.42)", marginBottom: "1.25rem" }}>
-                Best for businesses doing consistent daily orders
+                Scale without it falling apart — automation, hiring, and more.
               </p>
               <Link
                 href="/register"
