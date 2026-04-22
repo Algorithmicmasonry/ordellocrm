@@ -1,3 +1,4 @@
+// @ts-nocheck — one-time migration script, references fields removed from schema
 /**
  * Migration Script: Migrate existing Product prices to ProductPrice table
  *
