@@ -17,6 +17,7 @@ import {
   BotMessageSquare,
   ChartPie,
   Code2,
+  CreditCard,
   HatGlasses,
   LayoutDashboard,
   LogOut,
@@ -127,6 +128,11 @@ const routes = [
     label: "Notifications",
     icon: Bell,
     href: "/dashboard/admin/notifications",
+  },
+  {
+    label: "Subscription",
+    icon: CreditCard,
+    href: "/dashboard/admin/subscription",
   },
   {
     label: "Settings",
