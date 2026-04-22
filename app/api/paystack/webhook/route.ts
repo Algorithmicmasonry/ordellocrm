@@ -32,14 +32,14 @@ export async function POST(req: NextRequest) {
         const { organizationId, type, tokens, plan, interval } = metadata ?? {}
         if (!organizationId) break
 
-        // Token purchase — credit tokens to org
+        // Token purchase - credit tokens to org
         if (type === "token_purchase" && tokens) {
           await creditTokens(organizationId, tokens, amount, reference)
           console.log(`[paystack/webhook] Credited ${tokens} tokens to org ${organizationId}`)
           break
         }
 
-        // Subscription payment — activate org
+        // Subscription payment - activate org
         if (!plan) break
 
         const now = new Date()
@@ -126,3 +126,4 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({ received: true })
 }
+
