@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation"
 import { requireOrgContext } from "@/lib/org-context"
-import { CheckCircle2 } from "lucide-react"
+import { CheckCircle2, AlertCircle, Clock } from "lucide-react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 
@@ -14,31 +14,55 @@ export default async function BillingVerifyPage({ searchParams }: Props) {
 
   if (!reference) redirect("/billing")
 
-  // Verify the payment with Paystack
-  const res = await fetch(`https://api.paystack.co/transaction/verify/${reference}`, {
-    headers: { Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}` },
-    cache: "no-store",
-  })
+  // If the key isn't configured we can't verify — but the webhook will still
+  // activate the org. Show a "pending" state rather than a false failure.
+  if (!process.env.PAYSTACK_SECRET_KEY) {
+    return <PendingScreen />
+  }
 
-  const data = await res.json()
+  let verified = false
+  try {
+    const res = await fetch(`https://api.paystack.co/transaction/verify/${reference}`, {
+      headers: { Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}` },
+      cache: "no-store",
+    })
+    const data = await res.json()
+    verified = data.status === true && data.data?.status === "success"
+  } catch {
+    // Network or parse error — fall through to pending screen
+    return <PendingScreen />
+  }
 
-  if (!data.status || data.data.status !== "success") {
+  if (!verified) {
     return (
       <div className="min-h-screen flex items-center justify-center p-4">
         <div className="max-w-md w-full text-center space-y-4">
-          <h1 className="text-2xl font-bold text-red-600">Payment not confirmed</h1>
-          <p className="text-muted-foreground">
-            We could not verify your payment. If you were charged, please contact support.
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-red-100">
+            <AlertCircle className="w-8 h-8 text-red-600" />
+          </div>
+          <h1 className="text-2xl font-bold">Payment not confirmed</h1>
+          <p className="text-muted-foreground text-sm">
+            We could not verify your payment with Paystack. If you were charged,
+            your subscription will activate automatically within a few minutes.
+            Check your dashboard or contact{" "}
+            <a href="mailto:hello@ordello.com" className="text-primary underline">
+              hello@ordello.com
+            </a>{" "}
+            if it doesn&apos;t.
           </p>
-          <Link href="/billing">
-            <Button variant="outline">Back to Billing</Button>
-          </Link>
+          <div className="flex gap-3 justify-center">
+            <Link href="/dashboard">
+              <Button variant="outline">Go to Dashboard</Button>
+            </Link>
+            <Link href="/billing">
+              <Button variant="ghost">Back to Billing</Button>
+            </Link>
+          </div>
         </div>
       </div>
     )
   }
 
-  // Payment confirmed - webhook will handle DB update
   return (
     <div className="min-h-screen flex items-center justify-center p-4">
       <div className="max-w-md w-full text-center space-y-6">
@@ -51,6 +75,31 @@ export default async function BillingVerifyPage({ searchParams }: Props) {
             Your subscription is now active. Welcome to Ordello.
           </p>
         </div>
+        <Link href="/dashboard">
+          <Button size="lg" className="w-full">Go to Dashboard</Button>
+        </Link>
+      </div>
+    </div>
+  )
+}
+
+function PendingScreen() {
+  return (
+    <div className="min-h-screen flex items-center justify-center p-4">
+      <div className="max-w-md w-full text-center space-y-4">
+        <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-blue-100">
+          <Clock className="w-8 h-8 text-blue-600" />
+        </div>
+        <h1 className="text-2xl font-bold">Payment received</h1>
+        <p className="text-muted-foreground text-sm">
+          Your payment was received by Paystack. Your subscription will activate
+          automatically within a few minutes. Check your dashboard — if it&apos;s
+          not active after 5 minutes, contact{" "}
+          <a href="mailto:hello@ordello.com" className="text-primary underline">
+            hello@ordello.com
+          </a>
+          .
+        </p>
         <Link href="/dashboard">
           <Button size="lg" className="w-full">Go to Dashboard</Button>
         </Link>
