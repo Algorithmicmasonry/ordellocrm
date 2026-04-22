@@ -27,7 +27,6 @@ import {
   Phone,
   PanelLeftOpen,
   Repeat,
-  Rocket,
   Settings,
   ShoppingBag,
   Target,
@@ -35,6 +34,7 @@ import {
   UsersRound,
   WalletCards,
 } from "lucide-react";
+import { OrdelloLogo } from "@/components/ordello-logo";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
@@ -188,13 +188,11 @@ export function Sidebar() {
           isCollapsed ? "justify-center flex-col gap-3" : "gap-3",
         )}
       >
-        <div className="size-10 bg-primary rounded-lg flex items-center justify-center text-white">
-          <Rocket className="size-5" />
-        </div>
+        <OrdelloLogo size={40} />
 
         {!isCollapsed && (
           <div className="flex-1 min-w-0">
-            <h1 className="text-base font-bold leading-none">Ordo CRM</h1>
+            <h1 className="text-base font-bold leading-none">ordello</h1>
             <p className="text-xs text-muted-foreground mt-1">
               Management System
             </p>

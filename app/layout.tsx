@@ -7,9 +7,9 @@ import { Toaster } from "@/components/ui/sonner";
 const inter = Rethink_Sans({ subsets: ["latin"], display: "swap" });
 
 export const metadata: Metadata = {
-  title: "Ordo – E-commerce CRM & Order Management System",
+  title: "ordello – E-commerce CRM & Order Management",
   description:
-    "A centralized CRM for managing e-commerce orders, inventory, sales representatives, agents, expenses, revenue, and profit tracking in real time.",
+    "ordello is a multi-tenant CRM for managing e-commerce orders, inventory, sales representatives, agents, expenses, revenue, and profit tracking in real time.",
 };
 
 export default function RootLayout({
