@@ -15,6 +15,7 @@ import {
   Users,
   Zap,
 } from "lucide-react";
+import { OrdelloLogo } from "@/components/ordello-logo";
 import { LandingNav } from "./_components/landing-nav";
 import { LandingHero } from "./_components/landing-hero";
 import { LandingFaq } from "./_components/landing-faq";
@@ -85,6 +86,42 @@ export default function Home() {
     <div style={{ backgroundColor: "#060a14", minHeight: "100vh", color: "white" }}>
       <LandingNav />
       <LandingHero />
+
+      {/* ── YouTube demo embed ────────────────────────────────── */}
+      <section style={{ padding: "5rem 0", borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+        <div style={{ maxWidth: "72rem", margin: "0 auto", padding: "0 1.25rem" }}>
+          <div style={{ textAlign: "center", marginBottom: "2.5rem" }}>
+            <SectionLabel>See it in action</SectionLabel>
+            <SectionHeading>
+              Watch Ordello <span style={{ color: "#60a5fa" }}>in a real business</span>
+            </SectionHeading>
+            <SectionSub>
+              See how Henry went from WhatsApp chaos to a fully tracked operation — orders, agents, profit, all in one place.
+            </SectionSub>
+          </div>
+          <div
+            style={{
+              position: "relative",
+              paddingBottom: "56.25%",
+              height: 0,
+              borderRadius: "1rem",
+              overflow: "hidden",
+              border: "1px solid rgba(255,255,255,0.1)",
+              boxShadow: "0 32px 80px rgba(0,0,0,0.5)",
+            }}
+          >
+            <iframe
+              src="https://www.youtube.com/embed/y_zd_cHPqyc?si=wayLSuu0Ck6Mbn0N"
+              title="Ordello demo"
+              frameBorder="0"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+              referrerPolicy="strict-origin-when-cross-origin"
+              allowFullScreen
+              style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%" }}
+            />
+          </div>
+        </div>
+      </section>
 
       {/* ── Stats bar ─────────────────────────────────────────── */}
       <section style={{ borderTop: "1px solid rgba(255,255,255,0.06)", borderBottom: "1px solid rgba(255,255,255,0.06)", padding: "2.5rem 0" }}>
@@ -386,93 +423,320 @@ export default function Home() {
         </div>
       </section>
 
-      {/* ── Pricing CTA ───────────────────────────────────────── */}
+      {/* ── Pricing ───────────────────────────────────────────── */}
       <section id="pricing" style={{ padding: "6rem 0", borderTop: "1px solid rgba(255,255,255,0.06)" }}>
         <div style={{ maxWidth: "72rem", margin: "0 auto", padding: "0 1.25rem" }}>
           <div style={{ textAlign: "center", marginBottom: "3rem" }}>
             <SectionLabel>Pricing</SectionLabel>
-            <SectionHeading>
-              One plan. Everything included.
-            </SectionHeading>
+            <SectionHeading>Simple, transparent pricing</SectionHeading>
             <SectionSub>
-              No per-seat pricing. No hidden add-ons. Just one flat plan that gives your whole team access to every feature.
+              Start free. Scale as you grow. Every plan includes full access during the trial — no credit card required.
             </SectionSub>
           </div>
 
-          {/* Pricing card */}
-          <div style={{ maxWidth: "28rem", margin: "0 auto" }}>
+          <div className="grid md:grid-cols-3 gap-6 items-start">
+            {/* Starter */}
+            <div
+              style={{
+                borderRadius: "1.25rem",
+                background: "rgba(255,255,255,0.02)",
+                border: "1px solid rgba(255,255,255,0.08)",
+                padding: "2rem",
+              }}
+            >
+              <div style={{ fontSize: "0.8rem", color: "rgba(255,255,255,0.4)", marginBottom: "0.5rem" }}>Starter</div>
+              <div style={{ display: "flex", alignItems: "baseline", gap: "0.25rem", marginBottom: "0.25rem" }}>
+                <span style={{ fontSize: "2.25rem", fontWeight: 800, color: "white" }}>₦18,000</span>
+                <span style={{ fontSize: "0.875rem", color: "rgba(255,255,255,0.4)" }}>/month</span>
+              </div>
+              <div style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.3)", marginBottom: "1.75rem" }}>₦180,000/year — save 2 months</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem", marginBottom: "1.75rem" }}>
+                {[
+                  "Up to 500 orders/month",
+                  "Up to 3 sales reps",
+                  "Up to 10 delivery agents",
+                  "Order tracking & notes",
+                  "Basic analytics",
+                  "Email support",
+                ].map((f) => (
+                  <div key={f} style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                    <CheckCircle2 style={{ width: "0.85rem", height: "0.85rem", color: "#4ade80", flexShrink: 0 }} />
+                    <span style={{ fontSize: "0.85rem", color: "rgba(255,255,255,0.55)" }}>{f}</span>
+                  </div>
+                ))}
+              </div>
+              <Link
+                href="/login"
+                style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem", width: "100%", background: "rgba(255,255,255,0.06)", color: "white", padding: "0.8rem 1.5rem", borderRadius: "0.75rem", fontWeight: 600, fontSize: "0.9rem", textDecoration: "none", border: "1px solid rgba(255,255,255,0.1)", transition: "background-color 150ms" }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = "rgba(255,255,255,0.1)"; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = "rgba(255,255,255,0.06)"; }}
+              >
+                Start free trial
+              </Link>
+            </div>
+
+            {/* Growth — highlighted */}
             <div
               style={{
                 borderRadius: "1.25rem",
                 background: "rgba(255,255,255,0.03)",
-                border: "1px solid rgba(59,130,246,0.25)",
-                padding: "2.5rem",
+                border: "1px solid rgba(59,130,246,0.35)",
+                padding: "2rem",
                 position: "relative",
-                overflow: "hidden",
+                boxShadow: "0 0 40px rgba(37,99,235,0.1)",
               }}
             >
-              {/* Popular badge */}
-              <div style={{ position: "absolute", top: "1rem", right: "1rem", padding: "0.2rem 0.6rem", borderRadius: "9999px", background: "rgba(59,130,246,0.15)", border: "1px solid rgba(59,130,246,0.3)", fontSize: "0.65rem", color: "#93c5fd", fontWeight: 600 }}>
+              <div style={{ position: "absolute", top: "-0.75rem", left: "50%", transform: "translateX(-50%)", padding: "0.2rem 0.75rem", borderRadius: "9999px", background: "#2563eb", fontSize: "0.65rem", color: "white", fontWeight: 700, whiteSpace: "nowrap" }}>
                 Most popular
               </div>
-
-              <div style={{ marginBottom: "1.5rem" }}>
-                <div style={{ fontSize: "0.8rem", color: "rgba(255,255,255,0.4)", marginBottom: "0.5rem" }}>Ordello Pro</div>
-                <div style={{ display: "flex", alignItems: "baseline", gap: "0.25rem" }}>
-                  <span style={{ fontSize: "2.5rem", fontWeight: 800, color: "white" }}>₦35,000</span>
-                  <span style={{ fontSize: "0.875rem", color: "rgba(255,255,255,0.4)" }}>/month</span>
-                </div>
-                <div style={{ fontSize: "0.8rem", color: "rgba(255,255,255,0.35)", marginTop: "0.25rem" }}>
-                  Or ₦350,000/year — save 2 months
-                </div>
+              <div style={{ fontSize: "0.8rem", color: "rgba(255,255,255,0.4)", marginBottom: "0.5rem" }}>Growth</div>
+              <div style={{ display: "flex", alignItems: "baseline", gap: "0.25rem", marginBottom: "0.25rem" }}>
+                <span style={{ fontSize: "2.25rem", fontWeight: 800, color: "white" }}>₦35,000</span>
+                <span style={{ fontSize: "0.875rem", color: "rgba(255,255,255,0.4)" }}>/month</span>
               </div>
-
-              <div style={{ display: "flex", flexDirection: "column", gap: "0.625rem", marginBottom: "2rem" }}>
+              <div style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.3)", marginBottom: "1.75rem" }}>₦350,000/year — save 2 months</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem", marginBottom: "1.75rem" }}>
                 {[
                   "Unlimited orders & products",
                   "Up to 15 sales reps",
                   "Up to 50 delivery agents",
                   "AI voice calling (Vapi)",
-                  "WhatsApp delivery tracking",
+                  "Full profit & analytics reports",
                   "Multi-currency pricing",
-                  "Full analytics & profit reports",
+                  "Round-robin assignment",
                   "Priority support",
-                ].map((feature) => (
-                  <div key={feature} style={{ display: "flex", alignItems: "center", gap: "0.625rem" }}>
-                    <CheckCircle2 style={{ width: "0.9rem", height: "0.9rem", color: "#4ade80", flexShrink: 0 }} />
-                    <span style={{ fontSize: "0.875rem", color: "rgba(255,255,255,0.65)" }}>{feature}</span>
+                ].map((f) => (
+                  <div key={f} style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                    <CheckCircle2 style={{ width: "0.85rem", height: "0.85rem", color: "#4ade80", flexShrink: 0 }} />
+                    <span style={{ fontSize: "0.85rem", color: "rgba(255,255,255,0.65)" }}>{f}</span>
                   </div>
                 ))}
               </div>
-
               <Link
                 href="/login"
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: "0.5rem",
-                  width: "100%",
-                  background: "#2563eb",
-                  color: "white",
-                  padding: "0.9rem 1.5rem",
-                  borderRadius: "0.75rem",
-                  fontWeight: 600,
-                  fontSize: "0.95rem",
-                  textDecoration: "none",
-                  transition: "background-color 150ms ease-out, transform 160ms ease-out",
-                }}
+                style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem", width: "100%", background: "#2563eb", color: "white", padding: "0.8rem 1.5rem", borderRadius: "0.75rem", fontWeight: 600, fontSize: "0.9rem", textDecoration: "none", transition: "background-color 150ms, transform 160ms" }}
                 onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = "#3b82f6"; }}
                 onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = "#2563eb"; }}
                 onMouseDown={(e) => { (e.currentTarget as HTMLElement).style.transform = "scale(0.97)"; }}
                 onMouseUp={(e) => { (e.currentTarget as HTMLElement).style.transform = "scale(1)"; }}
               >
-                Start 14-day free trial
-                <ArrowRight style={{ width: "1rem", height: "1rem" }} />
+                Start 14-Day Free Trial
+                <ArrowRight style={{ width: "0.9rem", height: "0.9rem" }} />
               </Link>
-              <p style={{ textAlign: "center", fontSize: "0.75rem", color: "rgba(255,255,255,0.3)", marginTop: "0.75rem" }}>
-                No credit card required
-              </p>
+              <p style={{ textAlign: "center", fontSize: "0.72rem", color: "rgba(255,255,255,0.3)", marginTop: "0.625rem" }}>No credit card required</p>
+            </div>
+
+            {/* Enterprise */}
+            <div
+              style={{
+                borderRadius: "1.25rem",
+                background: "linear-gradient(135deg, rgba(13,31,60,0.8) 0%, rgba(6,10,20,0.6) 100%)",
+                border: "1px solid rgba(99,102,241,0.3)",
+                padding: "2rem",
+              }}
+            >
+              <div style={{ fontSize: "0.8rem", color: "rgba(255,255,255,0.4)", marginBottom: "0.5rem" }}>Enterprise</div>
+              <div style={{ display: "flex", alignItems: "baseline", gap: "0.25rem", marginBottom: "0.25rem" }}>
+                <span style={{ fontSize: "2.25rem", fontWeight: 800, color: "white" }}>₦500,000</span>
+              </div>
+              <div style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.3)", marginBottom: "1.75rem" }}>One-time setup — done for you</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem", marginBottom: "1.75rem" }}>
+                {[
+                  "Everything in Growth",
+                  "Unlimited reps & agents",
+                  "Done-for-you implementation",
+                  "Full team training",
+                  "Profit & commission audit",
+                  "90-day review support",
+                  "Dedicated account manager",
+                  "2 slots available per month",
+                ].map((f) => (
+                  <div key={f} style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                    <CheckCircle2 style={{ width: "0.85rem", height: "0.85rem", color: "#a78bfa", flexShrink: 0 }} />
+                    <span style={{ fontSize: "0.85rem", color: "rgba(255,255,255,0.55)" }}>{f}</span>
+                  </div>
+                ))}
+              </div>
+              <Link
+                href="/enterprise"
+                style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem", width: "100%", background: "rgba(99,102,241,0.15)", color: "#a78bfa", padding: "0.8rem 1.5rem", borderRadius: "0.75rem", fontWeight: 600, fontSize: "0.9rem", textDecoration: "none", border: "1px solid rgba(99,102,241,0.3)", transition: "background-color 150ms, border-color 150ms" }}
+                onMouseEnter={(e) => { const el = e.currentTarget as HTMLElement; el.style.backgroundColor = "rgba(99,102,241,0.25)"; el.style.borderColor = "rgba(99,102,241,0.5)"; }}
+                onMouseLeave={(e) => { const el = e.currentTarget as HTMLElement; el.style.backgroundColor = "rgba(99,102,241,0.15)"; el.style.borderColor = "rgba(99,102,241,0.3)"; }}
+              >
+                Book Strategy Call
+                <ArrowRight style={{ width: "0.9rem", height: "0.9rem" }} />
+              </Link>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── Install on any device ────────────────────────────── */}
+      <section style={{ padding: "6rem 0", borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+        <div style={{ maxWidth: "72rem", margin: "0 auto", padding: "0 1.25rem" }}>
+          <div style={{ textAlign: "center", marginBottom: "3rem" }}>
+            <SectionLabel>Available everywhere</SectionLabel>
+            <SectionHeading>
+              Install Ordello as an app —{" "}
+              <span style={{ color: "#60a5fa" }}>on any device</span>
+            </SectionHeading>
+            <SectionSub>
+              Ordello runs as a Progressive Web App. Your team can install it directly on their phones, tablets, and computers — no app store needed.
+            </SectionSub>
+          </div>
+
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-5">
+            {[
+              {
+                icon: (
+                  <svg viewBox="0 0 24 24" fill="currentColor" style={{ width: "1.5rem", height: "1.5rem" }}>
+                    <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/>
+                  </svg>
+                ),
+                platform: "iOS & iPadOS",
+                desc: "Tap Share → Add to Home Screen in Safari. Runs full-screen like a native app.",
+                color: "#a78bfa",
+                bg: "rgba(139,92,246,0.1)",
+              },
+              {
+                icon: (
+                  <svg viewBox="0 0 24 24" fill="currentColor" style={{ width: "1.5rem", height: "1.5rem" }}>
+                    <path d="M17.523 15.341 20 12l-2.477-3.341L14 12l3.523 3.341zM12 6.523 8.659 9 12 11.477 15.341 9 12 6.523zM6.477 8.659 4 12l2.477 3.341L10 12 6.477 8.659zM12 17.477 8.659 15 12 12.523 15.341 15 12 17.477z"/>
+                  </svg>
+                ),
+                platform: "Android",
+                desc: "Tap the menu → Add to Home Screen in Chrome. Works offline too.",
+                color: "#4ade80",
+                bg: "rgba(34,197,94,0.1)",
+              },
+              {
+                icon: (
+                  <svg viewBox="0 0 24 24" fill="currentColor" style={{ width: "1.5rem", height: "1.5rem" }}>
+                    <path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V6h16v12z"/>
+                    <path d="M6 10h12v2H6zm0 4h8v2H6z"/>
+                  </svg>
+                ),
+                platform: "macOS",
+                desc: "Install from Chrome or Safari on Mac. Lives in your Dock like any native app.",
+                color: "#60a5fa",
+                bg: "rgba(59,130,246,0.1)",
+              },
+              {
+                icon: (
+                  <svg viewBox="0 0 24 24" fill="currentColor" style={{ width: "1.5rem", height: "1.5rem" }}>
+                    <path d="M3 12V6.75l9-1.58V12H3zM21 3.5V12h-9V4.92L21 3.5zM3 13h9v6.42L3 18.08V13zm9 .08V20.5l9-1.58V13H12z"/>
+                  </svg>
+                ),
+                platform: "Windows",
+                desc: "Install from Edge or Chrome. Pins to your taskbar — no separate download.",
+                color: "#fb923c",
+                bg: "rgba(249,115,22,0.1)",
+              },
+            ].map((p) => (
+              <div
+                key={p.platform}
+                style={{
+                  padding: "1.75rem",
+                  borderRadius: "1rem",
+                  background: "rgba(255,255,255,0.025)",
+                  border: "1px solid rgba(255,255,255,0.07)",
+                }}
+              >
+                <div
+                  style={{
+                    width: "2.75rem",
+                    height: "2.75rem",
+                    borderRadius: "0.75rem",
+                    background: p.bg,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    color: p.color,
+                    marginBottom: "1.125rem",
+                  }}
+                >
+                  {p.icon}
+                </div>
+                <h3 style={{ fontSize: "1rem", fontWeight: 700, color: "white", marginBottom: "0.5rem" }}>{p.platform}</h3>
+                <p style={{ fontSize: "0.85rem", color: "rgba(255,255,255,0.45)", lineHeight: 1.65 }}>{p.desc}</p>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ marginTop: "2.5rem", textAlign: "center" }}>
+            <p style={{ fontSize: "0.85rem", color: "rgba(255,255,255,0.3)" }}>
+              Works for admins, sales reps, and inventory managers — each role gets their own tailored view.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* ── About the builder ─────────────────────────────────── */}
+      <section style={{ padding: "6rem 0", borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+        <div style={{ maxWidth: "48rem", margin: "0 auto", padding: "0 1.25rem" }}>
+          <div style={{ textAlign: "center", marginBottom: "3rem" }}>
+            <SectionLabel>Who built this</SectionLabel>
+          </div>
+          <div
+            style={{
+              borderRadius: "1.25rem",
+              background: "rgba(255,255,255,0.025)",
+              border: "1px solid rgba(255,255,255,0.08)",
+              padding: "3rem",
+              textAlign: "center",
+            }}
+          >
+            <div
+              style={{
+                width: "5rem",
+                height: "5rem",
+                borderRadius: "50%",
+                overflow: "hidden",
+                margin: "0 auto 1.5rem",
+                border: "2px solid rgba(59,130,246,0.3)",
+              }}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/emmy.jpg" alt="Emmanuel" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+            </div>
+            <h2 style={{ fontSize: "1.5rem", fontWeight: 800, color: "white", marginBottom: "1.75rem" }}>
+              My name is Emmanuel.
+            </h2>
+            <div style={{ display: "flex", flexDirection: "column", gap: "1rem", textAlign: "left" }}>
+              {[
+                "I am a software engineer. Before I built Ordello, I spent years building systems for different kinds of businesses — car dealerships, pharmacies, barbershops, universities, logistics companies. Different industries, same problem everywhere: the business had grown but the tools they were using had not kept up.",
+                "Then Henry sent me a message. He had posted a picture on his WhatsApp status — sitting with paper, manually calculating how much stock he had sent to agents. We started talking. He told me he was tired of Google Sheets, sharing orders with reps one by one, manually, every single day, with no way to know which rep was actually closing and which one was wasting leads.",
+                "So I built it. Not from a distance — inside his real business, with his real team, fixing real problems one by one. When it was ready, I didn't just hand it over. I trained his staff personally and kept working with him to make it better.",
+                "I built Ordello for exactly one type of business: Nigerian POD operators who are serious about running things properly. If that is you, I want to build it inside your business too.",
+              ].map((para, i) => (
+                <p key={i} style={{ fontSize: "0.9rem", color: "rgba(255,255,255,0.55)", lineHeight: 1.75 }}>
+                  {para}
+                </p>
+              ))}
+            </div>
+            <div style={{ marginTop: "2rem" }}>
+              <Link
+                href="/enterprise"
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "0.5rem",
+                  background: "rgba(59,130,246,0.1)",
+                  color: "#93c5fd",
+                  padding: "0.8rem 1.75rem",
+                  borderRadius: "0.75rem",
+                  fontWeight: 600,
+                  fontSize: "0.9rem",
+                  textDecoration: "none",
+                  border: "1px solid rgba(59,130,246,0.2)",
+                  transition: "background-color 150ms",
+                }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = "rgba(59,130,246,0.18)"; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = "rgba(59,130,246,0.1)"; }}
+              >
+                Work with me directly
+                <ArrowRight style={{ width: "0.9rem", height: "0.9rem" }} />
+              </Link>
             </div>
           </div>
         </div>
@@ -560,13 +824,8 @@ export default function Home() {
             {/* Brand */}
             <div style={{ gridColumn: "span 1" }}>
               <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.875rem" }}>
-                <div style={{ width: "1.75rem", height: "1.75rem", borderRadius: "0.4rem", background: "#2563eb", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <svg viewBox="0 0 24 24" fill="none" style={{ width: "0.8rem", color: "white" }} stroke="currentColor" strokeWidth={2.5}>
-                    <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
-                    <polyline points="9,22 9,12 15,12 15,22" />
-                  </svg>
-                </div>
-                <span style={{ fontWeight: 700, color: "white", fontSize: "1rem" }}>ordello</span>
+                <OrdelloLogo size={28} />
+                <span style={{ fontWeight: 700, color: "white", fontSize: "1rem" }}>Ordello</span>
               </div>
               <p style={{ fontSize: "0.8rem", color: "rgba(255,255,255,0.35)", lineHeight: 1.65 }}>
                 The CRM built for Nigerian e-commerce. Track every order, every naira, every delivery.

@@ -106,26 +106,8 @@ export function LandingHero() {
                 onMouseDown={(e) => { (e.currentTarget as HTMLElement).style.transform = "scale(0.97)"; }}
                 onMouseUp={(e) => { (e.currentTarget as HTMLElement).style.transform = "scale(1)"; }}
               >
-                Start free trial
+                Start 14-Day Free Trial
                 <ArrowRight style={{ width: "1rem", height: "1rem" }} />
-              </Link>
-              <Link
-                href="/login"
-                style={{
-                  display: "inline-flex", alignItems: "center", gap: "0.5rem",
-                  background: "rgba(255,255,255,0.05)", color: "white",
-                  padding: "0.8rem 1.5rem", borderRadius: "0.75rem",
-                  fontWeight: 500, fontSize: "0.95rem",
-                  border: "1px solid rgba(255,255,255,0.1)",
-                  transition: "background-color 150ms ease-out, border-color 150ms ease-out, transform 160ms ease-out",
-                  textDecoration: "none",
-                }}
-                onMouseEnter={(e) => { const el = e.currentTarget as HTMLElement; el.style.backgroundColor = "rgba(255,255,255,0.09)"; el.style.borderColor = "rgba(255,255,255,0.2)"; }}
-                onMouseLeave={(e) => { const el = e.currentTarget as HTMLElement; el.style.backgroundColor = "rgba(255,255,255,0.05)"; el.style.borderColor = "rgba(255,255,255,0.1)"; }}
-                onMouseDown={(e) => { (e.currentTarget as HTMLElement).style.transform = "scale(0.97)"; }}
-                onMouseUp={(e) => { (e.currentTarget as HTMLElement).style.transform = "scale(1)"; }}
-              >
-                See live demo
               </Link>
             </div>
 
