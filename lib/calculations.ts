@@ -251,6 +251,7 @@ export async function updateInventoryOnDelivery(orderId: string, organizationId:
         select: { currentStock: true },
       })
       await logStockMovement({
+        organizationId,
         productId: item.productId,
         type: "DELIVERED",
         quantity: -item.quantity,
@@ -329,6 +330,7 @@ export async function restoreInventoryFromDelivery(orderId: string, organization
         select: { currentStock: true },
       })
       await logStockMovement({
+        organizationId,
         productId: item.productId,
         type: "DELIVERY_REVERSED",
         quantity: item.quantity,
@@ -349,6 +351,7 @@ export async function restoreInventoryFromDelivery(orderId: string, organization
       })
 
       await logStockMovement({
+        organizationId,
         productId: item.productId,
         type: "DELIVERY_REVERSED",
         quantity: item.quantity,
