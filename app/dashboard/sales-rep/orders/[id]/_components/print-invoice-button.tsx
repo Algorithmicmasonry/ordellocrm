@@ -20,7 +20,7 @@ export function PrintInvoiceButton({ order }: PrintInvoiceButtonProps) {
       0,
     );
 
-    const storeName = process.env.NEXT_PUBLIC_STORE_NAME || "Ordo Store";
+    const storeName = process.env.NEXT_PUBLIC_STORE_NAME || "Ordello CRM";
     const currencySymbol = getCurrencySymbol(order.currency);
 
     return `

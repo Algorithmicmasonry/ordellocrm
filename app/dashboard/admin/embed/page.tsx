@@ -5,7 +5,7 @@ import { ChevronRight } from "lucide-react";
 import { EmbedFormGenerator } from "./_components/embed-form-generator";
 
 export const metadata = {
-  title: "Embed Form Generator - Ordo CRM",
+  title: "Embed Form Generator - Ordello CRM",
   description: "Generate embeddable order forms for your products",
 };
 

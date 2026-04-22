@@ -7,7 +7,7 @@ import { PushNotificationManager } from "@/app/_components/push-notification-man
 import { InstallPrompt } from "@/app/_components/install-prompt";
 
 export const metadata = {
-  title: "Settings - Ordo CRM",
+  title: "Settings - Ordello CRM",
   description: "Manage your account settings and preferences",
 };
 
@@ -17,7 +17,10 @@ export default async function AdminSettingsPage() {
     redirect("/dashboard");
   }
 
-  const user = await db.user.findUnique({ where: { id: ctx.userId }, select: { name: true } });
+  const user = await db.user.findUnique({
+    where: { id: ctx.userId },
+    select: { name: true },
+  });
 
   return (
     <div className="flex flex-col gap-4 sm:gap-6">
@@ -50,7 +53,7 @@ export default async function AdminSettingsPage() {
           <div>
             <h2 className="text-xl font-bold">Progressive Web App</h2>
             <p className="text-sm text-muted-foreground mt-1">
-              Install Ordo as an app and manage notifications
+              Install Ordello as an app and manage notifications
             </p>
           </div>
           <div className="grid gap-4 md:grid-cols-2">

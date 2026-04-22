@@ -7,7 +7,11 @@ import { getDateRange } from "@/lib/date-utils";
 import type { TimePeriod } from "@/lib/types";
 import { attributeExpense } from "@/lib/expense-utils";
 
-export async function generateMetadata({ params }: { params: Promise<{ productId: string }> }) {
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ productId: string }>;
+}) {
   const ctx = await requireOrgContext();
   const { productId } = await params;
 
@@ -18,17 +22,24 @@ export async function generateMetadata({ params }: { params: Promise<{ productId
 
   if (!product) {
     return {
-      title: "Product Not Found | Ordo CRM",
+      title: "Product Not Found | Ordello CRM",
     };
   }
 
   return {
-    title: `${product.name} - Expense Analytics | Ordo CRM`,
+    title: `${product.name} - Expense Analytics | Ordello CRM`,
     description: `Detailed expense and profit analysis for ${product.name}`,
   };
 }
 
-async function getProductAnalytics(organizationId: string, productId: string, period: TimePeriod = "month", timezone?: string, startDateParam?: string, endDateParam?: string) {
+async function getProductAnalytics(
+  organizationId: string,
+  productId: string,
+  period: TimePeriod = "month",
+  timezone?: string,
+  startDateParam?: string,
+  endDateParam?: string,
+) {
   // Verify product exists and get pricing from ProductPrice table
   const product = await db.product.findFirst({
     where: { id: productId, organizationId },
@@ -47,7 +58,7 @@ async function getProductAnalytics(organizationId: string, productId: string, pe
 
   // Get price and cost from ProductPrice table for the product's primary currency
   const productPrice = product.productPrices.find(
-    (p) => p.currency === product.currency
+    (p) => p.currency === product.currency,
   );
 
   if (!productPrice) {
@@ -55,9 +66,10 @@ async function getProductAnalytics(organizationId: string, productId: string, pe
   }
 
   // Get date range for current period (or custom range)
-  const { startDate, endDate } = (startDateParam && endDateParam)
-    ? { startDate: new Date(startDateParam), endDate: new Date(endDateParam) }
-    : getDateRange(period, timezone);
+  const { startDate, endDate } =
+    startDateParam && endDateParam
+      ? { startDate: new Date(startDateParam), endDate: new Date(endDateParam) }
+      : getDateRange(period, timezone);
 
   // Get date 6 months ago for historical chart data
   const sixMonthsAgo = new Date();
@@ -103,13 +115,14 @@ async function getProductAnalytics(organizationId: string, productId: string, pe
 
   // Filter for current period only (for stats)
   const currentOrderItems = allOrderItems.filter(
-    (item) => item.order.deliveredAt &&
-    item.order.deliveredAt >= startDate &&
-    item.order.deliveredAt <= endDate
+    (item) =>
+      item.order.deliveredAt &&
+      item.order.deliveredAt >= startDate &&
+      item.order.deliveredAt <= endDate,
   );
 
   const currentExpenses = allExpenses.filter(
-    (expense) => expense.date >= startDate && expense.date <= endDate
+    (expense) => expense.date >= startDate && expense.date <= endDate,
   );
 
   // Calculate revenue and COGS from current period order items
@@ -127,7 +140,7 @@ async function getProductAnalytics(organizationId: string, productId: string, pe
   const productUnitsSoldMap = new Map([[productId, totalUnitsSold]]);
   const totalExpenses = currentExpenses.reduce(
     (sum, exp) => sum + attributeExpense(exp, productUnitsSoldMap),
-    0
+    0,
   );
 
   // Calculate net profit
@@ -142,7 +155,7 @@ async function getProductAnalytics(organizationId: string, productId: string, pe
         attributeExpense(expense, productUnitsSoldMap);
       return acc;
     },
-    {} as Record<string, number>
+    {} as Record<string, number>,
   );
 
   // Monthly breakdown (last 6 months)
@@ -236,7 +249,8 @@ async function getProductAnalytics(organizationId: string, productId: string, pe
       netProfit,
       profitMargin,
       totalUnitsSold,
-      averageRevenuePerUnit: totalUnitsSold > 0 ? totalRevenue / totalUnitsSold : 0,
+      averageRevenuePerUnit:
+        totalUnitsSold > 0 ? totalRevenue / totalUnitsSold : 0,
       averageCostPerUnit: totalUnitsSold > 0 ? totalCOGS / totalUnitsSold : 0,
     },
     expensesByType,
@@ -252,7 +266,12 @@ export default async function ProductAnalyticsPage({
   searchParams,
 }: {
   params: Promise<{ productId: string }>;
-  searchParams: Promise<{ period?: string; tz?: string; startDate?: string; endDate?: string }>;
+  searchParams: Promise<{
+    period?: string;
+    tz?: string;
+    startDate?: string;
+    endDate?: string;
+  }>;
 }) {
   const ctx = await requireOrgContext();
   const { productId } = await params;
@@ -262,7 +281,14 @@ export default async function ProductAnalyticsPage({
   const startDate = query?.startDate;
   const endDate = query?.endDate;
 
-  const data = await getProductAnalytics(ctx.organizationId, productId, period, timezone, startDate, endDate);
+  const data = await getProductAnalytics(
+    ctx.organizationId,
+    productId,
+    period,
+    timezone,
+    startDate,
+    endDate,
+  );
 
   if (!data) {
     notFound();

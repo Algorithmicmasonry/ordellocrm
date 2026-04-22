@@ -9,11 +9,7 @@ import {
   CurrencyFilter,
 } from "../_components";
 import { DeliveryStats, DeliveriesTable } from "./_components";
-import {
-  getDeliveries,
-  getDeliveryStats,
-  getAgentsForFilter,
-} from "./actions";
+import { getDeliveries, getDeliveryStats, getAgentsForFilter } from "./actions";
 
 type SearchParams = {
   period?: string;
@@ -26,7 +22,7 @@ type SearchParams = {
 };
 
 export const metadata = {
-  title: "Deliveries | Ordo CRM",
+  title: "Deliveries | Ordello CRM",
 };
 
 export default async function DeliveriesPage({
@@ -55,7 +51,13 @@ export default async function DeliveriesPage({
   const filters = { agentId, currency, search };
 
   const [deliveriesResult, statsResult, agentsResult] = await Promise.all([
-    getDeliveries(filters, { page, perPage: 10 }, currentPeriod, startDate, endDate),
+    getDeliveries(
+      filters,
+      { page, perPage: 10 },
+      currentPeriod,
+      startDate,
+      endDate,
+    ),
     getDeliveryStats(currentPeriod, currency, startDate, endDate),
     getAgentsForFilter(),
   ]);

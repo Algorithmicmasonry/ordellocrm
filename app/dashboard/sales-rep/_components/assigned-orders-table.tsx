@@ -83,7 +83,8 @@ function ResponseTimeBadge({
   createdAt: Date;
   confirmedAt: Date | null;
 }) {
-  if (!confirmedAt) return <span className="text-xs text-muted-foreground">—</span>;
+  if (!confirmedAt)
+    return <span className="text-xs text-muted-foreground">—</span>;
   const ms = new Date(confirmedAt).getTime() - new Date(createdAt).getTime();
   const minutes = Math.round(ms / 60000);
   const hours = ms / 3600000;
@@ -162,8 +163,16 @@ const statusTimelineConfig: Record<
   DELIVERED: { label: "Delivered", icon: Check, color: "text-emerald-500" },
   CANCELLED: { label: "Cancelled", icon: XCircle, color: "text-red-500" },
   POSTPONED: { label: "Postponed", icon: Timer, color: "text-orange-500" },
-  NOT_REACHABLE: { label: "Not Reachable", icon: Phone, color: "text-slate-500" },
-  NOT_PICKING_CALLS: { label: "Not Picking Calls", icon: Phone, color: "text-rose-500" },
+  NOT_REACHABLE: {
+    label: "Not Reachable",
+    icon: Phone,
+    color: "text-slate-500",
+  },
+  NOT_PICKING_CALLS: {
+    label: "Not Picking Calls",
+    icon: Phone,
+    color: "text-rose-500",
+  },
 };
 
 function getSourceIcon(source: string) {
@@ -183,7 +192,7 @@ export function AssignedOrdersTable({
   const [showFilters, setShowFilters] = useState(false);
   const [searchValue, setSearchValue] = useState(currentSearch);
 
-  const storeName = process.env.NEXT_PUBLIC_STORE_NAME || "Ordo Store";
+  const storeName = process.env.NEXT_PUBLIC_STORE_NAME || "Ordello CRM";
 
   const filteredOrders = useMemo(() => {
     const query = searchValue.trim().toLowerCase();
@@ -392,7 +401,9 @@ export function AssignedOrdersTable({
                     <SelectItem value="CANCELLED">Cancelled</SelectItem>
                     <SelectItem value="POSTPONED">Postponed</SelectItem>
                     <SelectItem value="NOT_REACHABLE">Not reachable</SelectItem>
-                    <SelectItem value="NOT_PICKING_CALLS">Not Picking Calls</SelectItem>
+                    <SelectItem value="NOT_PICKING_CALLS">
+                      Not Picking Calls
+                    </SelectItem>
                     <SelectItem value="FOLLOW_UP">Follow-up</SelectItem>
                   </SelectContent>
                 </Select>
@@ -510,7 +521,9 @@ export function AssignedOrdersTable({
                             variant="outline"
                             className={cn(
                               "text-xs font-bold",
-                              STATUS_COLORS[order.status as keyof typeof STATUS_COLORS],
+                              STATUS_COLORS[
+                                order.status as keyof typeof STATUS_COLORS
+                              ],
                             )}
                           >
                             {order.status === "NEW" ? "Pending" : order.status}
@@ -520,13 +533,18 @@ export function AssignedOrdersTable({
                           )}
                         </div>
                         {order.hasPendingFollowUp && order.nextFollowUpDate && (
-                          <span className={cn(
-                            "text-xs font-medium",
-                            new Date(order.nextFollowUpDate).toDateString() === new Date().toDateString()
-                              ? "text-amber-600"
-                              : "text-red-500",
-                          )}>
-                            {new Date(order.nextFollowUpDate).toDateString() === new Date().toDateString()
+                          <span
+                            className={cn(
+                              "text-xs font-medium",
+                              new Date(
+                                order.nextFollowUpDate,
+                              ).toDateString() === new Date().toDateString()
+                                ? "text-amber-600"
+                                : "text-red-500",
+                            )}
+                          >
+                            {new Date(order.nextFollowUpDate).toDateString() ===
+                            new Date().toDateString()
                               ? "Follow-up due today"
                               : `Overdue · ${format(new Date(order.nextFollowUpDate), "MMM dd")}`}
                           </span>
@@ -592,25 +610,28 @@ export function AssignedOrdersTable({
         {orders.length > 0 && (
           <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 sm:px-6 py-4 border-t bg-muted/50">
             <div className="text-xs sm:text-sm text-muted-foreground text-center sm:text-left">
-              {searchValue.trim()
-                ? `Showing ${filteredOrders.length} of ${orders.length} loaded orders on this page`
-                : (
-                  <>
-                    Showing{" "}
-                    <span className="font-medium text-foreground">
-                      {(pagination.page - 1) * pagination.limit + 1}
-                    </span>{" "}
-                    to{" "}
-                    <span className="font-medium text-foreground">
-                      {Math.min(pagination.page * pagination.limit, pagination.total)}
-                    </span>{" "}
-                    of{" "}
-                    <span className="font-medium text-foreground">
-                      {pagination.total}
-                    </span>{" "}
-                    orders
-                  </>
-                )}
+              {searchValue.trim() ? (
+                `Showing ${filteredOrders.length} of ${orders.length} loaded orders on this page`
+              ) : (
+                <>
+                  Showing{" "}
+                  <span className="font-medium text-foreground">
+                    {(pagination.page - 1) * pagination.limit + 1}
+                  </span>{" "}
+                  to{" "}
+                  <span className="font-medium text-foreground">
+                    {Math.min(
+                      pagination.page * pagination.limit,
+                      pagination.total,
+                    )}
+                  </span>{" "}
+                  of{" "}
+                  <span className="font-medium text-foreground">
+                    {pagination.total}
+                  </span>{" "}
+                  orders
+                </>
+              )}
             </div>
             <div className="flex gap-2">
               <Button

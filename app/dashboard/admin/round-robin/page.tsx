@@ -5,7 +5,7 @@ import { getCurrentRoundRobinIndex } from "@/lib/round-robin";
 import { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Round-Robin Management | Ordo CRM",
+  title: "Round-Robin Management | Ordello CRM",
   description: "Configure the lead distribution sequence for your sales team",
 };
 
@@ -28,7 +28,10 @@ async function getRoundRobinData(organizationId: string) {
     select: { assignedToId: true, status: true },
   });
 
-  const ordersByRep = new Map<string, { assignedToId: string | null; status: string }[]>();
+  const ordersByRep = new Map<
+    string,
+    { assignedToId: string | null; status: string }[]
+  >();
   for (const m of members) ordersByRep.set(m.userId, []);
   for (const o of orders) {
     if (o.assignedToId) ordersByRep.get(o.assignedToId)?.push(o);
@@ -49,7 +52,10 @@ async function getRoundRobinData(organizationId: string) {
   });
 
   const activeSalesReps = salesReps.filter((r) => r.isActive);
-  const nextRepIndex = activeSalesReps.length > 0 ? (currentIndex + 1) % activeSalesReps.length : 0;
+  const nextRepIndex =
+    activeSalesReps.length > 0
+      ? (currentIndex + 1) % activeSalesReps.length
+      : 0;
   const nextRep = activeSalesReps[nextRepIndex] || null;
 
   return {

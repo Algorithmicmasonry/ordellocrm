@@ -3,7 +3,11 @@ import { requireOrgContext } from "@/lib/org-context";
 import Link from "next/link";
 import { ChevronRight, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { PackageList, CreatePackageButton, PackageSelectorNote } from "./_components";
+import {
+  PackageList,
+  CreatePackageButton,
+  PackageSelectorNote,
+} from "./_components";
 
 interface PageProps {
   params: Promise<{ productId: string }>;
@@ -18,7 +22,7 @@ export async function generateMetadata({ params }: PageProps) {
   });
 
   return {
-    title: `Manage Packages - ${product?.name || "Product"} - Ordo CRM`,
+    title: `Manage Packages - ${product?.name || "Product"} - Ordello CRM`,
   };
 }
 
@@ -28,14 +32,23 @@ export default async function ProductPackagesPage({ params }: PageProps) {
 
   // Fetch product with packages and prices
   const product = await db.product.findFirst({
-    where: { id: productId, organizationId: ctx.organizationId, isDeleted: false },
+    where: {
+      id: productId,
+      organizationId: ctx.organizationId,
+      isDeleted: false,
+    },
     include: {
       packages: {
         include: {
           components: {
             include: {
               product: {
-                select: { id: true, name: true, isActive: true, isDeleted: true },
+                select: {
+                  id: true,
+                  name: true,
+                  isActive: true,
+                  isDeleted: true,
+                },
               },
             },
             orderBy: { createdAt: "asc" },
@@ -57,7 +70,8 @@ export default async function ProductPackagesPage({ params }: PageProps) {
             Product Not Found
           </h2>
           <p className="text-sm text-muted-foreground mt-2">
-            The product you're looking for doesn't exist or has been deleted.
+            The product you&apos;re looking for doesn&apos;t exist or has been
+            deleted.
           </p>
           <Button asChild className="mt-4">
             <Link href="/dashboard/admin/inventory">Back to Inventory</Link>
@@ -116,9 +130,7 @@ export default async function ProductPackagesPage({ params }: PageProps) {
           <h1 className="text-4xl font-black leading-tight tracking-tight">
             Manage Packages
           </h1>
-          <p className="text-muted-foreground text-lg mt-1">
-            {product.name}
-          </p>
+          <p className="text-muted-foreground text-lg mt-1">{product.name}</p>
           {product.description && (
             <p className="text-sm text-muted-foreground mt-1">
               {product.description}

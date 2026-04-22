@@ -2,7 +2,13 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -15,9 +21,10 @@ export function EmbedCodeGenerator() {
   const [height, setHeight] = useState("800");
   const [redirectUrl, setRedirectUrl] = useState("");
 
-  const baseUrl = typeof window !== "undefined"
-    ? window.location.origin
-    : process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+  const baseUrl =
+    typeof window !== "undefined"
+      ? window.location.origin
+      : process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
 
   const embedUrl = `${baseUrl}/order-form/embed${redirectUrl ? `?redirectUrl=${encodeURIComponent(redirectUrl)}` : ""}`;
 
@@ -150,7 +157,8 @@ add_shortcode('ordo_order_form', 'ordo_order_form_shortcode');
             <TabsContent value="iframe" className="space-y-4">
               <div>
                 <p className="text-sm text-muted-foreground mb-3">
-                  Copy and paste this code into your HTML page where you want the form to appear.
+                  Copy and paste this code into your HTML page where you want
+                  the form to appear.
                 </p>
                 <div className="relative">
                   <pre className="bg-muted p-4 rounded-lg overflow-x-auto text-xs">
@@ -176,7 +184,8 @@ add_shortcode('ordo_order_form', 'ordo_order_form_shortcode');
             <TabsContent value="elementor" className="space-y-4">
               <div>
                 <p className="text-sm text-muted-foreground mb-3">
-                  For WordPress with Elementor: Add an HTML widget and paste this code, or add the shortcode to your theme.
+                  For WordPress with Elementor: Add an HTML widget and paste
+                  this code, or add the shortcode to your theme.
                 </p>
                 <div className="relative">
                   <pre className="bg-muted p-4 rounded-lg overflow-x-auto text-xs">
@@ -202,9 +211,12 @@ add_shortcode('ordo_order_form', 'ordo_order_form_shortcode');
                   </p>
                   <ol className="text-xs text-blue-800 space-y-1 ml-4 list-decimal">
                     <li>Open your page in Elementor editor</li>
-                    <li>Drag an "HTML" widget to your page</li>
+                    <li>Drag an &quot;HTML&quot; widget to your page</li>
                     <li>Paste the iframe code into the HTML widget</li>
-                    <li>Adjust widget width to "Full Width" for best results</li>
+                    <li>
+                      Adjust widget width to &quot;Full Width&quot; for best
+                      results
+                    </li>
                     <li>Save and preview your page</li>
                   </ol>
                 </div>
@@ -214,7 +226,8 @@ add_shortcode('ordo_order_form', 'ordo_order_form_shortcode');
             <TabsContent value="javascript" className="space-y-4">
               <div>
                 <p className="text-sm text-muted-foreground mb-3">
-                  Use this JavaScript code to dynamically embed the form. Place it where you want the form to appear.
+                  Use this JavaScript code to dynamically embed the form. Place
+                  it where you want the form to appear.
                 </p>
                 <div className="relative">
                   <pre className="bg-muted p-4 rounded-lg overflow-x-auto text-xs">
@@ -272,9 +285,18 @@ add_shortcode('ordo_order_form', 'ordo_order_form_shortcode');
         </CardHeader>
         <CardContent className="text-sm text-blue-800 space-y-2">
           <ul className="list-disc ml-4 space-y-1">
-            <li>The form is fully responsive and will adapt to different screen sizes</li>
-            <li>Orders submitted through the embedded form are automatically assigned to sales reps</li>
-            <li>The form includes validation to ensure all required fields are filled</li>
+            <li>
+              The form is fully responsive and will adapt to different screen
+              sizes
+            </li>
+            <li>
+              Orders submitted through the embedded form are automatically
+              assigned to sales reps
+            </li>
+            <li>
+              The form includes validation to ensure all required fields are
+              filled
+            </li>
             <li>Success/error messages are displayed within the iframe</li>
             <li>For best results, ensure the embed width is at least 320px</li>
             <li>The form works on all modern browsers including mobile</li>

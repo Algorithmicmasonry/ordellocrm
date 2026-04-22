@@ -6,7 +6,7 @@ import { previewStockCorrections } from "@/app/actions/stock-correction";
 import { StockCorrectionClient } from "./_components/stock-correction-client";
 
 export const metadata = {
-  title: "Stock Correction - Ordo CRM",
+  title: "Stock Correction - Ordello CRM",
   description: "Fix inventory discrepancies caused by the double-deduction bug",
 };
 
