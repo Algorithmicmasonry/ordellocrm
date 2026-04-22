@@ -1,4 +1,4 @@
-const CACHE_VERSION = "v2"; // Increment this when you make changes
+const CACHE_VERSION = "v3"; // Increment this when you make changes
 
 console.log("Service Worker loading... Version:", CACHE_VERSION);
 
@@ -9,9 +9,11 @@ self.addEventListener("periodicsync", (event) => {
   }
 });
 
-// Also add this to prevent SW from being killed
+// Keep SW alive — but only intercept GET requests.
+// POST/PUT/DELETE are server actions or API calls; intercepting them corrupts
+// the ReadableStream body and breaks Next.js server action routing.
 self.addEventListener("fetch", (event) => {
-  // This ensures SW stays registered
+  if (event.request.method !== "GET") return;
   event.respondWith(fetch(event.request));
 });
 
