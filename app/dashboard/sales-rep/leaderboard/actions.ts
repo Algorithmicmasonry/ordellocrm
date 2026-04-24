@@ -54,9 +54,8 @@ export async function getLeaderboardData(
         organizationId: ctx.organizationId,
         assignedToId: { in: repIds },
         createdAt: { gte: start, lte: end },
-        status: { not: OrderStatus.CANCELLED },
       },
-      select: { assignedToId: true, status: true, deliveredAt: true },
+      select: { assignedToId: true, status: true },
     });
 
     const statsMap = new Map<string, { total: number; delivered: number }>();
@@ -67,7 +66,7 @@ export async function getLeaderboardData(
       const s = statsMap.get(order.assignedToId);
       if (!s) continue;
       s.total += 1;
-      if (order.status === OrderStatus.DELIVERED && order.deliveredAt && order.deliveredAt >= start && order.deliveredAt <= end) {
+      if (order.status === OrderStatus.DELIVERED) {
         s.delivered += 1;
       }
     }
@@ -84,7 +83,7 @@ export async function getLeaderboardData(
           image: m.user.image,
           totalOrders: stats.total,
           deliveredOrders: stats.delivered,
-          conversionRate: Math.round(conversionRate * 10) / 10,
+          conversionRate: Math.round(conversionRate),
           isCurrentHoH: currentHoH?.userId === m.userId,
           isCurrentUser: m.userId === currentUserId,
         };

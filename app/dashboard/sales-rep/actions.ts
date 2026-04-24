@@ -64,7 +64,7 @@ export async function getSalesRepDashboardStats(
       db.order.count({ where: { ...orgRepFilter, status: "DELIVERED", deliveredAt: { gte: currentPeriodRange.startDate, lte: currentPeriodRange.endDate } } }),
     ]);
 
-    const conversionRate = totalOrders > 0 ? (deliveredFromCohort / totalOrders) * 100 : 0;
+    const conversionRate = totalOrders > 0 ? Math.round((deliveredFromCohort / totalOrders) * 100) : 0;
 
     const deliveredOrderItems = await db.orderItem.findMany({
       where: {
