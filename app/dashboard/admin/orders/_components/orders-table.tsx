@@ -40,6 +40,7 @@ import {
   Eye,
   Loader2,
   Package,
+  Pencil,
   Timer,
   Trash2,
   Truck,
@@ -57,6 +58,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import toast from "react-hot-toast";
 import { deleteOrder } from "../[id]/actions";
+import { EditOrderItemsModal } from "./edit-order-items-modal";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { OrdersTableFilters } from "./orders-table-filters";
@@ -556,6 +558,7 @@ export function OrdersTable({
   const [isPending, startTransition] = useTransition();
   const [selectedOrder, setSelectedOrder] = useState<OrderWithRelations | null>(null);
   const [orderToDelete, setOrderToDelete] = useState<OrderWithRelations | null>(null);
+  const [orderToEdit, setOrderToEdit] = useState<OrderWithRelations | null>(null);
   const [isDeleting, startDeleteTransition] = useTransition();
 
   const handleDelete = () => {
@@ -745,6 +748,20 @@ export function OrdersTable({
                             <Eye className="size-4 mr-2" />
                             Details
                           </Button>
+                          {order.status !== "DELIVERED" && order.status !== "CANCELLED" && (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  onClick={() => setOrderToEdit(order)}
+                                >
+                                  <Pencil className="size-4" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>Edit items</TooltipContent>
+                            </Tooltip>
+                          )}
                           <Tooltip>
                             <TooltipTrigger asChild>
                               <Button
@@ -819,6 +836,13 @@ export function OrdersTable({
           onClose={() => setSelectedOrder(null)}
         />
       )}
+
+      {/* Edit Order Items Modal */}
+      <EditOrderItemsModal
+        order={orderToEdit}
+        open={!!orderToEdit}
+        onClose={() => setOrderToEdit(null)}
+      />
 
       {/* Delete Confirmation */}
       <AlertDialog open={!!orderToDelete} onOpenChange={(open) => { if (!open) setOrderToDelete(null); }}>
