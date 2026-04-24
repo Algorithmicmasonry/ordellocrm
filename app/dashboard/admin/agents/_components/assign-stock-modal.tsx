@@ -30,7 +30,7 @@ import {
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import toast from "react-hot-toast";
-import { assignStockToAgent } from "@/app/actions/agents";
+import { assignStockToAgent, getProductsForStockAssignment } from "@/app/actions/agents";
 import { Agent, Product } from "@prisma/client";
 
 const assignStockSchema = z.object({
@@ -76,16 +76,12 @@ export function AssignStockModal({
   // Fetch available products when dialog opens
   const fetchProducts = async () => {
     setIsLoadingProducts(true);
-    console.log("The fetchProducts function is called");
     try {
-      const response = await fetch("/api/products/available");
-      if (response.ok) {
-        const data = await response.json();
-        console.log(
-          "This is the data returned when products are fetched in the assign stock modal of the agents table: ",
-          data,
-        );
-        setAvailableProducts(data.products || []);
+      const result = await getProductsForStockAssignment();
+      if (result.success) {
+        setAvailableProducts(result.products);
+      } else {
+        toast.error(result.error || "Failed to load products");
       }
     } catch (error) {
       console.error("Error fetching products:", error);
@@ -147,7 +143,7 @@ export function AssignStockModal({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-md" modal={false}>
         <DialogHeader>
           <DialogTitle>Assign Stock to {agent?.name || "Agent"}</DialogTitle>
         </DialogHeader>
@@ -178,25 +174,31 @@ export function AssignStockModal({
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent className="max-h-[300px]">
-                      {availableProducts.map((product) => (
-                        <SelectItem key={product.id} value={product.id}>
-                          <div className="flex items-center justify-between w-full gap-4">
-                            <div>
-                              <span className="font-medium">
-                                {product.name}
-                              </span>
-                              {product.sku && (
-                                <span className="ml-2 text-xs text-muted-foreground">
-                                  ({product.sku})
+                      {availableProducts.length === 0 ? (
+                        <div className="py-6 text-center text-sm text-muted-foreground">
+                          No products found. Add a product in Inventory first.
+                        </div>
+                      ) : (
+                        availableProducts.map((product) => (
+                          <SelectItem key={product.id} value={product.id}>
+                            <div className="flex items-center justify-between w-full gap-4">
+                              <div>
+                                <span className="font-medium">
+                                  {product.name}
                                 </span>
-                              )}
+                                {product.sku && (
+                                  <span className="ml-2 text-xs text-muted-foreground">
+                                    ({product.sku})
+                                  </span>
+                                )}
+                              </div>
+                              <span className="text-xs text-muted-foreground">
+                                Stock: {product.currentStock}
+                              </span>
                             </div>
-                            <span className="text-xs text-muted-foreground">
-                              Stock: {product.currentStock}
-                            </span>
-                          </div>
-                        </SelectItem>
-                      ))}
+                          </SelectItem>
+                        ))
+                      )}
                     </SelectContent>
                   </Select>
                   <FormMessage />

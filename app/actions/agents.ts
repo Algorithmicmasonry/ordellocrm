@@ -410,3 +410,30 @@ export async function createSettlement(data: {
     return { success: false, error: error.message || "Failed to create settlement" }
   }
 }
+
+/**
+ * Fetch all non-deleted products for admin stock assignment.
+ * Scoped to the org via requireOrgContext — no orgSlug param needed.
+ * Does NOT filter by isActive so admins can assign stock to any
+ * product that physically exists in the warehouse.
+ */
+export async function getProductsForStockAssignment() {
+  try {
+    const ctx = await requireOrgContext()
+
+    if (ctx.role !== "ADMIN" && ctx.role !== "OWNER" && ctx.role !== "INVENTORY_MANAGER") {
+      return { success: false as const, error: "Insufficient permissions", products: [] }
+    }
+
+    const products = await db.product.findMany({
+      where: { organizationId: ctx.organizationId, isDeleted: false },
+      select: { id: true, name: true, sku: true, currentStock: true },
+      orderBy: { name: "asc" },
+    })
+
+    return { success: true as const, products }
+  } catch (error) {
+    console.error("Error fetching products for stock assignment:", error)
+    return { success: false as const, error: "Failed to load products", products: [] }
+  }
+}
