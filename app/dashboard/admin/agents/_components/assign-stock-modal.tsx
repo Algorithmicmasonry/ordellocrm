@@ -142,8 +142,8 @@ export function AssignStockModal({
   }, [open, agent]);
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-w-md" modal={false}>
+    <Dialog open={open} onOpenChange={handleOpenChange} modal={false}>
+      <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>Assign Stock to {agent?.name || "Agent"}</DialogTitle>
         </DialogHeader>
