@@ -44,7 +44,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import toast from "react-hot-toast";
-import { assignStockToAgent } from "@/app/actions/agents";
+import { assignStockToAgent, getProductsForStockAssignment } from "@/app/actions/agents";
 
 type AgentWithStock = Agent & {
   stock: (AgentStock & {
@@ -372,10 +372,11 @@ function AssignStockDialog({ agent }: { agent: AgentWithStock }) {
   const fetchProducts = async () => {
     setIsLoadingProducts(true);
     try {
-      const response = await fetch("/api/products/available");
-      if (response.ok) {
-        const data = await response.json();
-        setAvailableProducts(data.products || []);
+      const result = await getProductsForStockAssignment();
+      if (result.success) {
+        setAvailableProducts(result.products);
+      } else {
+        toast.error(result.error || "Failed to load products");
       }
     } catch (error) {
       console.error("Error fetching products:", error);
