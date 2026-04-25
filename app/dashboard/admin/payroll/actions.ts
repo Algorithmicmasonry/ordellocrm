@@ -2,7 +2,7 @@
 
 import { db } from "@/lib/db";
 import { revalidatePath } from "next/cache";
-import { OrderStatus } from "@prisma/client";
+import { OrderStatus, PaymentType } from "@prisma/client";
 import { getHoHWeeksInRange, computeHoHForRange, HOH_POLICY_START } from "@/lib/head-of-house";
 import { requireOrgContext } from "@/lib/org-context";
 
@@ -32,7 +32,7 @@ export async function getSalesRepsWithRates() {
       }),
       db.salesRepRate.findMany({
         where: { organizationId: ctx.organizationId },
-        select: { userId: true, ratePerOrder: true, updatedAt: true },
+        select: { userId: true, paymentType: true, ratePerOrder: true, fixedSalary: true, updatedAt: true },
       }),
     ]);
 
@@ -53,17 +53,21 @@ export async function getSalesRepsWithRates() {
   }
 }
 
-/** Set or update the pay rate for a member of this org */
-export async function setRepRate(userId: string, ratePerOrder: number) {
+/** Set or update the pay structure for a member of this org */
+export async function setRepRate(
+  userId: string,
+  paymentType: PaymentType,
+  ratePerOrder: number,
+  fixedSalary: number,
+) {
   try {
     const ctx = await requireOrgContext();
     requireAdmin(ctx.role);
 
-    // SalesRepRate unique is (organizationId, userId)
     await db.salesRepRate.upsert({
       where: { organizationId_userId: { organizationId: ctx.organizationId, userId } },
-      create: { organizationId: ctx.organizationId, userId, ratePerOrder, createdById: ctx.userId },
-      update: { ratePerOrder },
+      create: { organizationId: ctx.organizationId, userId, paymentType, ratePerOrder, fixedSalary, createdById: ctx.userId },
+      update: { paymentType, ratePerOrder, fixedSalary },
     });
 
     revalidatePath("/dashboard/admin/payroll");
@@ -96,6 +100,7 @@ export async function previewPayroll(monthYear: string) {
       db.salesRepRate.findMany({
         where: { organizationId: ctx.organizationId },
         include: { user: { select: { id: true, name: true } } },
+        // include new fields automatically via Prisma client
       }),
       getHoHWeeksInRange(
         start > HOH_POLICY_START ? start : HOH_POLICY_START,
@@ -125,15 +130,25 @@ export async function previewPayroll(monthYear: string) {
 
         const ordersDelivered = await db.order.count({ where: deliveryWhere });
         const hohWeeksCount = hohWeeksPerUser.get(rate.userId) ?? 0;
-        const baseAmount = ordersDelivered * rate.ratePerOrder;
         const hohBonus = hohWeeksCount * HOH_WEEK_BONUS;
+
+        const commissionAmount = (rate.paymentType === "COMMISSION" || rate.paymentType === "HYBRID")
+          ? ordersDelivered * rate.ratePerOrder
+          : 0;
+        const fixedSalary = (rate.paymentType === "FIXED" || rate.paymentType === "HYBRID")
+          ? rate.fixedSalary
+          : 0;
+        const baseAmount = fixedSalary + commissionAmount;
 
         return {
           userId: rate.userId,
           userName: rate.user.name,
           userRole: member?.role ?? "SALES_REP",
+          paymentType: rate.paymentType,
           ordersDelivered,
           ratePerOrder: rate.ratePerOrder,
+          fixedSalary,
+          commissionAmount,
           baseAmount,
           hohWeeks: hohWeeksCount,
           hohBonus,
@@ -180,8 +195,11 @@ export async function generatePayroll(monthYear: string, label: string, notes?: 
         items: {
           create: items.map((i) => ({
             userId: i.userId,
+            paymentType: i.paymentType,
             ordersDelivered: i.ordersDelivered,
             ratePerOrder: i.ratePerOrder,
+            fixedSalary: i.fixedSalary,
+            commissionAmount: i.commissionAmount,
             baseAmount: i.baseAmount,
             hohBonus: i.hohBonus,
             hohWeeks: i.hohWeeks,

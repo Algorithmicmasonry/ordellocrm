@@ -5,14 +5,17 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { PayrollDetailDialog } from "./payroll-detail-dialog";
 import { formatRole } from "@/lib/utils";
-import type { OrgMemberRole } from "@prisma/client";
+import type { OrgMemberRole, PaymentType } from "@prisma/client";
 
 interface PayrollItem {
   id: string;
   userId: string;
   user: { id: string; name: string; role: OrgMemberRole };
+  paymentType: PaymentType;
   ordersDelivered: number;
   ratePerOrder: number;
+  fixedSalary: number;
+  commissionAmount: number;
   baseAmount: number;
   hohWeeks: number;
   hohBonus: number;

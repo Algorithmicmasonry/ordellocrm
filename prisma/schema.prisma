@@ -110,6 +110,12 @@ enum PayrollStatus {
   PAID
 }
 
+enum PaymentType {
+  COMMISSION // paid per delivered order
+  FIXED      // fixed monthly salary
+  HYBRID     // fixed salary + commission per order
+}
+
 // ============================================================
 // ORGANIZATION (Tenant)
 // ============================================================
@@ -679,7 +685,9 @@ model SalesRepRate {
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   userId         String
   user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  ratePerOrder   Float
+  paymentType    PaymentType  @default(COMMISSION)
+  ratePerOrder   Float        @default(0)
+  fixedSalary    Float        @default(0)
   createdById    String
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
@@ -712,16 +720,19 @@ model Payroll {
 }
 
 model PayrollItem {
-  id              String  @id @default(cuid())
+  id              String      @id @default(cuid())
   payrollId       String
-  payroll         Payroll @relation(fields: [payrollId], references: [id], onDelete: Cascade)
+  payroll         Payroll     @relation(fields: [payrollId], references: [id], onDelete: Cascade)
   userId          String
-  user            User    @relation(fields: [userId], references: [id])
+  user            User        @relation(fields: [userId], references: [id])
+  paymentType     PaymentType @default(COMMISSION)
   ordersDelivered Int
   ratePerOrder    Float
+  fixedSalary     Float       @default(0)
+  commissionAmount Float      @default(0)
   baseAmount      Float
-  hohBonus        Float   @default(0)
-  hohWeeks        Int     @default(0)
+  hohBonus        Float       @default(0)
+  hohWeeks        Int         @default(0)
   totalAmount     Float
 
   createdAt DateTime @default(now())

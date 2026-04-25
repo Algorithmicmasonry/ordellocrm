@@ -2,14 +2,17 @@
 
 import { Badge } from "@/components/ui/badge";
 import { formatRole } from "@/lib/utils";
-import type { OrgMemberRole } from "@prisma/client";
+import type { OrgMemberRole, PaymentType } from "@prisma/client";
 
 export interface PreviewItem {
   userId: string;
   userName: string;
   userRole: OrgMemberRole;
+  paymentType: PaymentType;
   ordersDelivered: number;
   ratePerOrder: number;
+  fixedSalary: number;
+  commissionAmount: number;
   baseAmount: number;
   hohWeeks: number;
   hohBonus: number;
@@ -36,7 +39,8 @@ export function PayrollPreviewTable({ items, totalAmount }: Props) {
             <tr className="bg-muted/50 border-b">
               <th className="text-left px-4 py-3 font-medium">Name</th>
               <th className="text-right px-4 py-3 font-medium">Delivered</th>
-              <th className="text-right px-4 py-3 font-medium">Rate</th>
+              <th className="text-right px-4 py-3 font-medium">Fixed Salary</th>
+              <th className="text-right px-4 py-3 font-medium">Commission</th>
               <th className="text-right px-4 py-3 font-medium">Base Pay</th>
               <th className="text-right px-4 py-3 font-medium">HoH Bonus</th>
               <th className="text-right px-4 py-3 font-medium font-bold">Total</th>
@@ -64,7 +68,15 @@ export function PayrollPreviewTable({ items, totalAmount }: Props) {
                   {item.ordersDelivered}
                 </td>
                 <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">
-                  {fmt.format(item.ratePerOrder)}
+                  {item.fixedSalary > 0 ? fmt.format(item.fixedSalary) : <span className="text-muted-foreground/50">—</span>}
+                </td>
+                <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">
+                  {item.commissionAmount > 0 ? (
+                    <span>
+                      {fmt.format(item.commissionAmount)}
+                      <span className="text-xs text-muted-foreground/70 ml-1">({item.ordersDelivered} × {fmt.format(item.ratePerOrder)})</span>
+                    </span>
+                  ) : <span className="text-muted-foreground/50">—</span>}
                 </td>
                 <td className="px-4 py-3 text-right tabular-nums">
                   {fmt.format(item.baseAmount)}
@@ -89,7 +101,7 @@ export function PayrollPreviewTable({ items, totalAmount }: Props) {
           </tbody>
           <tfoot>
             <tr className="border-t bg-muted/50 font-bold">
-              <td className="px-4 py-3" colSpan={5}>
+              <td className="px-4 py-3" colSpan={6}>
                 Grand Total
               </td>
               <td className="px-4 py-3 text-right tabular-nums">

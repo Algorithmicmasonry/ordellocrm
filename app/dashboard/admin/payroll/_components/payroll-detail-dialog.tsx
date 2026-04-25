@@ -13,15 +13,18 @@ import { markPayrollPaid, deletePayroll } from "../actions";
 import { toast } from "sonner";
 import { useState } from "react";
 import { formatRole } from "@/lib/utils";
-import type { OrgMemberRole } from "@prisma/client";
+import type { OrgMemberRole, PaymentType } from "@prisma/client";
 
 interface PayrollItem {
   id: string;
   userId: string;
   userName: string;
   userRole: OrgMemberRole;
+  paymentType: PaymentType;
   ordersDelivered: number;
   ratePerOrder: number;
+  fixedSalary: number;
+  commissionAmount: number;
   baseAmount: number;
   hohWeeks: number;
   hohBonus: number;
@@ -120,8 +123,11 @@ export function PayrollDetailDialog({ payroll, onClose }: Props) {
               userId: item.userId,
               userName: item.userName,
               userRole: item.userRole,
+              paymentType: item.paymentType ?? "COMMISSION",
               ordersDelivered: item.ordersDelivered,
               ratePerOrder: item.ratePerOrder,
+              fixedSalary: item.fixedSalary ?? 0,
+              commissionAmount: item.commissionAmount ?? 0,
               baseAmount: item.baseAmount,
               hohWeeks: item.hohWeeks,
               hohBonus: item.hohBonus,

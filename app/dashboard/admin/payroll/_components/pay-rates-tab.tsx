@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { SetRateDialog } from "./set-rate-dialog";
 import { formatRole } from "@/lib/utils";
-import type { OrgMemberRole } from "@prisma/client";
+import type { OrgMemberRole, PaymentType } from "@prisma/client";
 
 interface RepWithRate {
   id: string;
@@ -13,7 +13,9 @@ interface RepWithRate {
   email: string;
   role: OrgMemberRole;
   rate: {
+    paymentType: PaymentType;
     ratePerOrder: number;
+    fixedSalary: number;
     updatedAt: Date;
   } | null;
 }
@@ -44,7 +46,7 @@ export function PayRatesTab({ users }: Props) {
             <tr className="bg-muted/50 border-b">
               <th className="text-left px-4 py-3 font-medium">Name</th>
               <th className="text-left px-4 py-3 font-medium hidden sm:table-cell">Role</th>
-              <th className="text-left px-4 py-3 font-medium">Rate / Order</th>
+              <th className="text-left px-4 py-3 font-medium">Pay Structure</th>
               <th className="text-left px-4 py-3 font-medium hidden md:table-cell">Last Updated</th>
               <th className="text-right px-4 py-3 font-medium">Action</th>
             </tr>
@@ -68,9 +70,20 @@ export function PayRatesTab({ users }: Props) {
                 </td>
                 <td className="px-4 py-3">
                   {user.rate ? (
-                    <span className="font-mono font-semibold text-emerald-600">
-                      {fmt.format(user.rate.ratePerOrder)}
-                    </span>
+                    <div className="space-y-0.5">
+                      <span className="text-xs font-medium px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
+                        {user.rate.paymentType === "COMMISSION" ? "Commission" : user.rate.paymentType === "FIXED" ? "Fixed" : "Hybrid"}
+                      </span>
+                      <div className="text-xs text-muted-foreground mt-1">
+                        {(user.rate.paymentType === "FIXED" || user.rate.paymentType === "HYBRID") && (
+                          <span className="font-mono font-semibold text-emerald-600">{fmt.format(user.rate.fixedSalary)}/mo</span>
+                        )}
+                        {user.rate.paymentType === "HYBRID" && <span className="mx-1">+</span>}
+                        {(user.rate.paymentType === "COMMISSION" || user.rate.paymentType === "HYBRID") && (
+                          <span className="font-mono font-semibold text-emerald-600">{fmt.format(user.rate.ratePerOrder)}/order</span>
+                        )}
+                      </div>
+                    </div>
                   ) : (
                     <span className="text-amber-500 text-xs font-medium">Not set</span>
                   )}
@@ -112,7 +125,9 @@ export function PayRatesTab({ users }: Props) {
           userId={dialogUser.id}
           userName={dialogUser.name}
           userRole={dialogUser.role}
+          currentPaymentType={dialogUser.rate?.paymentType ?? null}
           currentRate={dialogUser.rate?.ratePerOrder ?? null}
+          currentFixedSalary={dialogUser.rate?.fixedSalary ?? null}
         />
       )}
     </div>
