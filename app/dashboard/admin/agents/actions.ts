@@ -14,31 +14,34 @@ export async function getAgentStats(currency?: Currency) {
     const ctx = await requireOrgContext();
     requireAdmin(ctx.role);
 
-    const [totalAgents, activeAgents, agentStocks, pendingDeliveries] = await Promise.all([
-      db.agent.count({ where: { organizationId: ctx.organizationId } }),
-      db.agent.count({ where: { organizationId: ctx.organizationId, isActive: true } }),
-      db.agentStock.findMany({
-        where: { agent: { organizationId: ctx.organizationId } },
-        include: {
-          product: { include: { productPrices: true } },
-        },
-      }),
-      db.order.count({
-        where: {
-          organizationId: ctx.organizationId,
-          status: { in: ["CONFIRMED", "DISPATCHED"] },
-        },
-      }),
-    ]);
+    const [totalAgents, activeAgents, agentStocks, pendingDeliveries] =
+      await Promise.all([
+        db.agent.count({ where: { organizationId: ctx.organizationId } }),
+        db.agent.count({
+          where: { organizationId: ctx.organizationId, isActive: true },
+        }),
+        db.agentStock.findMany({
+          where: { agent: { organizationId: ctx.organizationId } },
+          include: {
+            product: { include: { productPrices: true } },
+          },
+        }),
+        db.order.count({
+          where: {
+            organizationId: ctx.organizationId,
+            status: { in: ["CONFIRMED", "DISPATCHED"] },
+          },
+        }),
+      ]);
 
     const calcValue = (field: "quantity" | "defective" | "missing") =>
       agentStocks.reduce((sum, stock) => {
         if (currency && stock.product.currency !== currency) return sum;
         const productPrice = stock.product.productPrices.find(
-          (p) => p.currency === (currency || stock.product.currency)
+          (p) => p.currency === (currency || stock.product.currency),
         );
-        const cost = productPrice?.cost || 0;
-        return sum + stock[field] * cost;
+        const price = productPrice?.price || 0;
+        return sum + stock[field] * price;
       }, 0);
 
     return {
@@ -95,7 +98,9 @@ export async function getAgentsWithMetrics(filters?: {
         orders: {
           where: {
             organizationId: ctx.organizationId,
-            status: { in: ["DELIVERED", "CANCELLED", "DISPATCHED", "CONFIRMED"] },
+            status: {
+              in: ["DELIVERED", "CANCELLED", "DISPATCHED", "CONFIRMED"],
+            },
           },
         },
       },
@@ -105,29 +110,32 @@ export async function getAgentsWithMetrics(filters?: {
     const agentsWithMetrics = agents.map((agent) => {
       const stockValue = agent.stock.reduce((sum, stock) => {
         const productPrice = stock.product.productPrices.find(
-          (p) => p.currency === stock.product.currency
+          (p) => p.currency === stock.product.currency,
         );
-        const cost = productPrice?.cost || 0;
-        return sum + stock.quantity * cost;
+        const price = productPrice?.price || 0;
+        return sum + stock.quantity * price;
       }, 0);
 
       const completedOrders = agent.orders.filter(
-        (o) => o.status === "DELIVERED" || o.status === "CANCELLED"
+        (o) => o.status === "DELIVERED" || o.status === "CANCELLED",
       );
-      const deliveredOrders = agent.orders.filter((o) => o.status === "DELIVERED");
+      const deliveredOrders = agent.orders.filter(
+        (o) => o.status === "DELIVERED",
+      );
       const successRate =
         completedOrders.length > 0
           ? (deliveredOrders.length / completedOrders.length) * 100
           : 0;
 
       const hasActiveOrders = agent.orders.some(
-        (o) => o.status === "DISPATCHED" || o.status === "CONFIRMED"
+        (o) => o.status === "DISPATCHED" || o.status === "CONFIRMED",
       );
-      const status: "active" | "inactive" | "order-in-progress" = !agent.isActive
-        ? "inactive"
-        : hasActiveOrders
-          ? "order-in-progress"
-          : "active";
+      const status: "active" | "inactive" | "order-in-progress" =
+        !agent.isActive
+          ? "inactive"
+          : hasActiveOrders
+            ? "order-in-progress"
+            : "active";
 
       return {
         id: agent.id,
