@@ -57,7 +57,6 @@ export function AssignStockModal({
   >([]);
   const [isLoadingProducts, setIsLoadingProducts] = useState(false);
   const router = useRouter();
-  const [diaOpen, setDiaOpen] = useState(false);
 
   const form = useForm<AssignStockFormValues>({
     resolver: zodResolver(assignStockSchema),
@@ -93,11 +92,7 @@ export function AssignStockModal({
 
   const handleOpenChange = (newOpen: boolean) => {
     onOpenChange(newOpen);
-    setDiaOpen(newOpen);
-    if (newOpen) {
-      // Add the agent check here
-      fetchProducts();
-    } else {
+    if (!newOpen) {
       form.reset();
     }
   };
@@ -139,10 +134,10 @@ export function AssignStockModal({
       // Reset form when modal closes
       form.reset();
     }
-  }, [open, agent]);
+  }, [open, agent, form]);
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange} modal={false}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>Assign Stock to {agent?.name || "Agent"}</DialogTitle>
